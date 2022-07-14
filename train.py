@@ -24,11 +24,7 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
 
-
-from torch.utils.tensorboard import SummaryWriter
-
-import models.vgg as models_vgg
-import utils
+from models.model_builder import BaseModel
 
 
 
@@ -37,12 +33,16 @@ model_names = sorted(name for name in models.__dict__
     and callable(models.__dict__[name]))
 
 
-parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
+parser = argparse.ArgumentParser(description='Pathfinder Training')
 parser.add_argument('data', metavar='DIR',
                     help='path to dataset')
-parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18')
+parser.add_argument('-cfg', '--cfg-file', metavar='CFG', default=None)
+parser.add_argument('-nl', '--nlayers', default=-1, type=int, metavar='N',
+                    help='Number of layers in backbone feature extractor')
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
+parser.add_argument('-ir', '--in-res', default=160, type=int, metavar='N',
+                    help='default input image resolution')
 parser.add_argument('--epochs', default=90, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
@@ -65,8 +65,6 @@ parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')
 parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
                     help='evaluate model on validation set')
-parser.add_argument('--pretrained', dest='pretrained', action='store_true',
-                    help='use pre-trained model')
 parser.add_argument('--world-size', default=-1, type=int,
                     help='number of nodes for distributed training')
 parser.add_argument('--rank', default=-1, type=int,
@@ -79,7 +77,6 @@ parser.add_argument('--seed', default=None, type=int,
                     help='seed for initializing training. ')
 parser.add_argument('--gpu', default=None, type=int,
                     help='GPU id to use.')
-parser.add_argument('--tensorboard-dir', default='runs', help='path where to save tensorboard')
 parser.add_argument('--multiprocessing-distributed', action='store_true',
                     help='Use multi-processing distributed training to launch '
                          'N processes per node, which has N GPUs. This is the '
@@ -88,6 +85,7 @@ parser.add_argument('--multiprocessing-distributed', action='store_true',
 
 best_acc1 = 0
 global_stats_file = None
+
 """NOTE:
 If you are using NCCL backend, remember to set 
 the following environment variables in your Ampere series GPU.
@@ -98,9 +96,21 @@ export NCCL_IB_DISABLE=1
 export NCCL_P2P_DISABLE=1
 export NCCL_SOCKET_IFNAME=lo
 """
+
 seed = 56
 torch.manual_seed(seed)
 np.random.seed(seed)
+
+
+class Config():
+    def __init__(self):
+        pass
+        
+def load_cfg(args):
+    with open("configs/%s" % args.cfg_file) as f:
+        cfg = f.read()
+    cfg = eval(cfg)
+    return cfg
 
 
 def generate_rand_string(n):
@@ -108,16 +118,25 @@ def generate_rand_string(n):
   str_rand = ''.join(random.choice(letters) for i in range(n))
   return str_rand
 
+def create_config(cfg):
+    config = Config()
+    for k, v in cfg.items():
+        setattr(config, k, v)
+    return config
 
 def main():
     args = parser.parse_args()
+    args.cfg = load_cfg(args)
+    args.cfg['nlayers'] = args.nlayers
+    args.cfg['in_res'] = args.in_res
     while True:
-        checkpoint_dir = Path("checkpoints_%s/%s" % (args.data.split("/")[-1], generate_rand_string(6)))
+        checkpoint_dir = Path("checkpoints_%s/%s/%s" % (args.data.split("/")[-1], 
+                                                        args.cfg['name'], 
+                                                        generate_rand_string(6)))
         if not os.path.exists(checkpoint_dir):
             args.checkpoint_dir = checkpoint_dir
             break
     args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    print("Experiment dir:", args.checkpoint_dir)
     if args.seed is not None:
         # random.seed(args.seed)
         torch.manual_seed(args.seed)
@@ -140,24 +159,14 @@ def main():
 
     ngpus_per_node = torch.cuda.device_count()
     if args.multiprocessing_distributed:
-        # Since we have ngpus_per_node processes per node, the total world_size
-        # needs to be adjusted accordingly
         args.world_size = ngpus_per_node * args.world_size
-        # Use torch.multiprocessing.spawn to launch distributed processes: the
-        # main_worker process function
         mp.spawn(main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, args))
         
     else:
-        # Simply call main_worker function
         main_worker(args.gpu, ngpus_per_node, args)
 
 
 def main_worker(gpu, ngpus_per_node, args):
-
-    # writer = SummaryWriter(str(args.tensorboard_dir))
-
-    iterator = utils.Iterator()
-
     global best_acc1
     args.gpu = gpu
 
@@ -183,25 +192,16 @@ def main_worker(gpu, ngpus_per_node, args):
         print(' '.join(sys.argv), file=global_stats_file)
 
     # create model
-    if 'imagenet_100' in args.data:
-        num_classes = 100
+    if 'pathfinder' in args.data:
+        num_classes = 2
     else:
-        num_classes = 1000
-    
-    if args.rank == 0:
-        print("%s-way classification" % num_classes)
+        print("Dataset not detected %s" % args.data)
+        return
 
-    if args.pretrained:
-        print("=> using pre-trained model '{}'".format(args.arch))
-        if "divnorm" in str(args.arch):
-            model_name = str(args.arch)
-            model = models_vgg.__dict__[model_name](pretrained=True, num_classes=num_classes)
-        else:
-            model = models_vgg.__dict__[args.arch](pretrained=True, num_classes=num_classes)
-    else:
-        print("=> creating model '{}'".format(args.arch))
-        model_name = str(args.arch)
-        model = models_vgg.__dict__[args.arch](pretrained=False, num_classes=num_classes)
+    print("=> creating model '{}'".format(args.cfg['name'] + str(args.cfg['nlayers'])))
+    args.cfg = create_config(args.cfg)
+    model = BaseModel(args.cfg)
+    model_name = args.cfg.name + str(args.cfg.nlayers)
     
     if args.rank == 0:
         params = [np.product(v.shape) for v in model.parameters()]
@@ -212,9 +212,6 @@ def main_worker(gpu, ngpus_per_node, args):
         print('using CPU, this will be slow')
     elif args.distributed:
         print("Distributed data parallel across GPUs")
-        # For multiprocessing distributed, DistributedDataParallel constructor
-        # should always set the single device scope, otherwise,
-        # DistributedDataParallel will use all available devices.
         if args.gpu is not None:
             torch.cuda.set_device(args.gpu)
             model.cuda(args.gpu)
@@ -275,16 +272,19 @@ def main_worker(gpu, ngpus_per_node, args):
     cudnn.benchmark = True
 
     # Data loading code
-    traindir = os.path.join(args.data, 'train')
-    valdir = os.path.join(args.data, 'val')
+    traindir = args.data  # os.path.join(args.data, 'train')
+    valdir = args.data  # os.path.join(args.data, 'val')
+    import ipdb; ipdb.set_trace()
 
+
+    # TODO(vveeraba): Replace following normalization with pathfinder mean and std
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
 
     train_dataset = datasets.ImageFolder(
         traindir,
         transforms.Compose([
-            transforms.RandomResizedCrop(160),
+            transforms.Resize(args.in_res),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             normalize,
@@ -292,8 +292,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
     val_loader = torch.utils.data.DataLoader(
         datasets.ImageFolder(valdir, transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(160),
+            transforms.Resize(args.in_res),
             transforms.ToTensor(),
             normalize,
         ])),
@@ -313,18 +312,18 @@ def main_worker(gpu, ngpus_per_node, args):
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
-        adjust_learning_rate(optimizer, epoch, args)
+        # adjust_learning_rate(optimizer, epoch, args)
         if epoch == 0:
             if not args.multiprocessing_distributed or (args.multiprocessing_distributed
                         and args.rank == 0):
                     state = dict(epoch=epoch + 1, model=model.state_dict(),
                                 optimizer=optimizer.state_dict())
-                    torch.save(state, '%s/checkpoint_%s.pth' % (args.checkpoint_dir, str(args.arch)))
+                    torch.save(state, '%s/pathfinder_checkpoint_%s.pth' % (args.checkpoint_dir, str(args.arch)))
         # train for one epoch
         if args.evaluate:
             val_acc1, val_acc5 = validate(val_loader, model, criterion, optimizer, epoch, args)
             return    
-        acc1 = train(train_loader, model, criterion, optimizer, epoch, args, writer=None, iterator=iterator)
+        acc1 = train(train_loader, model, criterion, optimizer, epoch, args)
         val_acc1, val_acc5 = validate(val_loader, model, criterion, optimizer, epoch, args)
         # remember best acc@1 and save checkpoint
         is_best = val_acc1 > best_acc1
@@ -336,7 +335,6 @@ def main_worker(gpu, ngpus_per_node, args):
         if args.rank == 0:
             print(json.dumps(stats), file=global_stats_file)
 
-        # writer.add_scalar("Train/Best_Acc1", best_acc1, epoch)
         state = {
                     'epoch': epoch + 1,
                     'arch': args.arch,
@@ -350,13 +348,13 @@ def main_worker(gpu, ngpus_per_node, args):
                     and args.rank == 0):
                 state = dict(epoch=epoch + 1, arch=args.arch, model=model.state_dict(),
                          optimizer=optimizer.state_dict())
-                torch.save(state, "%s/checkpoint_%s_epoch_%s.pth" % (args.checkpoint_dir, str(args.arch), epoch))
+                torch.save(state, "%s/pathfinder_checkpoint_%s_epoch_%s.pth" % (args.checkpoint_dir, str(args.arch), epoch))
         else:
             if not args.multiprocessing_distributed or (args.multiprocessing_distributed
                     and args.rank == 0):
                 state = dict(epoch=epoch + 1, arch=args.arch, model=model.state_dict(),
                             optimizer=optimizer.state_dict())
-                torch.save(state, '%s/checkpoint_%s.pth' % (args.checkpoint_dir, str(args.arch)))
+                torch.save(state, '%s/pathfinder_checkpoint_%s.pth' % (args.checkpoint_dir, str(args.arch)))
         
         if is_best:
             if not args.multiprocessing_distributed or (args.multiprocessing_distributed
@@ -364,11 +362,10 @@ def main_worker(gpu, ngpus_per_node, args):
                 print("Saving best model, val_acc = %s" % (val_acc1.item()))
                 state = dict(epoch=epoch + 1, model=model.state_dict(),
                             optimizer=optimizer.state_dict(), val_acc1=val_acc1.item())
-                torch.save(state, '%s/checkpoint_best_%s.pth' % (args.checkpoint_dir, str(args.arch)))
+                torch.save(state, '%s/pathfinder_checkpoint_best_%s.pth' % (args.checkpoint_dir, str(args.arch)))
 
         
-def train(train_loader, model, criterion, optimizer, epoch, args, writer, iterator):
-    del writer  # unused here
+def train(train_loader, model, criterion, optimizer, epoch, args):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
@@ -405,13 +402,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args, writer, iterat
             output = model(images)
             loss = criterion(output, target)
             # RELEASE below lines for no nan loss training
-            # loss = criterion(output.float(), target)
-            
-        # if torch.isnan(loss):
-        #     import ipdb; ipdb.set_trace()
-        #     print(output.min(), output.max(), 
-        #           target.min(), target.max(), 
-        #           loss)
+            # loss = criterion(output.float(), target)            
 
         # measure accuracy and record loss
         acc1, acc5 = accuracy(output, target, topk=(1, 5))
@@ -459,12 +450,6 @@ def train(train_loader, model, criterion, optimizer, epoch, args, writer, iterat
                             acc1=acc1.item())
                 print(json.dumps(stats))
                 print(json.dumps(stats), file=args.global_stats_file)
-
-        # writer.add_scalar("Loss/train", loss.item(), iterator.train_step)
-        # writer.add_scalar("Learning Rate", optimizer.param_groups[0]["lr"], iterator.train_step)
-        # writer.flush()
-
-        iterator.add_train()
     return top1.avg
 
 def validate(val_loader, model, criterion, optimizer, epoch, args):
