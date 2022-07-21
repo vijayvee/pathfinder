@@ -3,14 +3,12 @@
         [
             {
                 'conv_init': 'gabor',
-                'layer': 'conv',
-                'dilation': 1,
                 'fsize': 11,
-                'stride': 1,
+                'stride': 2,
                 'out_channels': 64,
-                },
+            },
         ],
-    'name': 'ff',
+    'name': 'dalernn',
     'num_classes': 2,
     'nlayers': -1,
 }

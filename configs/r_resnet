@@ -2,6 +2,7 @@
     'backbone':
         [
             {
+                'conv_init': None,
                 'layer': 'r_resnet',
                 'output_layer': 'res4',
                 },

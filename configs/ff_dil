@@ -4,7 +4,7 @@
             {
                 'conv_init': 'gabor',
                 'layer': 'conv',
-                'dilation': 1,
+                'dilation': 2,
                 'fsize': 11,
                 'stride': 1,
                 'out_channels': 64,
