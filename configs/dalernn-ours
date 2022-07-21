@@ -2,7 +2,7 @@
     'backbone':
         [
             {
-                'rnn_layer': 'hgru',
+                'rnn_layer': 'dalernn',
                 'conv_init': 'gabor',
                 'fsize': 11,
                 'stride': 2,
