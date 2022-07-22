@@ -24,7 +24,7 @@ class DaleRNNcell(nn.Module):
                  in_channels,
                  hidden_dim=None,
                  divnorm_fsize=5,
-                 exc_fsize=11,
+                 exc_fsize=7,
                  inh_fsize=5,
                  device='cuda',
                  ):
@@ -53,6 +53,8 @@ class DaleRNNcell(nn.Module):
             num_groups=1, num_channels=self.hidden_dim)
         self.ln_out_i = nn.GroupNorm(
             num_groups=1, num_channels=self.hidden_dim)
+        self.ln_out = nn.GroupNorm(
+            num_groups=1, num_channels=self.hidden_dim)
         # feedforward stimulus drive
         self.w_exc_x = nn.Conv2d(self.in_channels, self.hidden_dim, 1)
         self.w_inh_x = nn.Conv2d(self.in_channels, self.hidden_dim, 1)
@@ -74,18 +76,21 @@ class DaleRNNcell(nn.Module):
             input)) + self.ln_e_e(self.g_exc_e(exc)))
         g_inh = torch.sigmoid(self.ln_i_x(self.g_inh_x(
             input)) + self.ln_i_i(self.g_inh_i(inh)))
-        i_hat_t = torch.relu(
-            self.w_inh_x(input) +
-            self.w_inh_ei(torch.cat((exc, inh), 1)))
-        inh = F.relu(self.ln_out_i(g_inh * i_hat_t + (1 - g_inh) * inh))
+
         e_hat_t = torch.relu(
             self.w_exc_x(input) +
             self.w_exc_ei(torch.cat((exc, inh), 1)))
-        # Add a scalar multiplier to i_hat_t to control sub-contrast regime normalization?
-        exc = F.relu(self.ln_out_e(g_exc * e_hat_t + (1 - g_exc) * exc))
+        
+        i_hat_t = torch.relu(
+            self.w_inh_x(input) +
+            self.w_inh_ei(torch.cat((exc, inh), 1)))
 
-        # norm = self.div(exc) + 1e-5
-        # exc = F.relu(self.ln_out(exc / norm))
+        exc = torch.relu(self.ln_out_e(g_exc * e_hat_t + (1 - g_exc) * exc))
+        inh = torch.relu(self.ln_out_i(g_inh * i_hat_t + (1 - g_inh) * inh))
+        
+        # Add a scalar multiplier to i_hat_t to control sub-contrast regime normalization?
+        # norm = torch.relu(self.div(exc)) + 1e-4
+        # exc = torch.relu(self.ln_out(exc / norm))
         return (exc, inh)
 
 
@@ -107,6 +112,7 @@ class DaleRNNLayer(nn.Module):
         self.exc_fsize = exc_fsize
         self.inh_fsize = inh_fsize
         self.timesteps = timesteps
+        print("%s steps of recurrence" % self.timesteps)
         self.device = device
         self.rnn_cell = DaleRNNcell(in_channels=self.in_channels,
                                     hidden_dim=self.hidden_dim,
@@ -132,7 +138,6 @@ class DaleRNNLayer(nn.Module):
         if self.temporal_agg is not None:
             # import ipdb; ipdb.set_trace()
             t_probs = nn.Softmax(dim=1)(self.temporal_agg)
-            print(t_probs)
             outputs_e = torch.stack(outputs_e)
             output = torch.einsum('ij,jklmn -> iklmn', t_probs, outputs_e)
             return output[0]

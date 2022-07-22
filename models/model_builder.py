@@ -19,14 +19,16 @@ class BaseModel(nn.Module):
         self.backbone = cfg.backbone[0]
         self.nlayers = cfg.nlayers
         self.num_classes = cfg.num_classes
+
         if self.name.startswith("dalernn"):
-            if self.backbone['rnn_layer'].startswith("dalernn"):
-                self.rnn = DaleRNNLayer(self.backbone['out_channels'],
-                                        self.backbone['out_channels'],
-                                        timesteps=8,
-                                        )
-            else:
-                self.rnn = hConvGRU(hidden_dim=self.backbone['out_channels'])
+            self.rnn = DaleRNNLayer(self.backbone['out_channels'],
+                                    self.backbone['out_channels'],
+                                    timesteps=self.backbone['timesteps'],
+                                    exc_fsize=self.backbone['fsize'],
+                                    )
+        elif self.name.startswith("hgru"):
+            self.rnn = hConvGRU(filt_size=11, hidden_dim=self.backbone['out_channels'])
+
         self.num_units = self.backbone['out_channels']
 
         if self.name == 'ff':
@@ -34,31 +36,29 @@ class BaseModel(nn.Module):
             in_channels = 3
             dilation = self.backbone['dilation']
             for l_i in range(self.nlayers):
-                backbone.append(nn.Conv2d(in_channels,
-                                          self.backbone['out_channels'],
-                                          self.backbone['fsize'],
-                                          padding=1,
-                                          stride=self.backbone['stride'],
-                                          ))
+                if l_i == 0:
+                    backbone.append(get_gabor_conv(3, self.backbone['out_channels'],
+                                                    f_size=11, stride=2))
+                else:
+                    backbone.append(nn.Conv2d(in_channels,
+                                            self.backbone['out_channels'],
+                                            self.backbone['fsize'],
+                                            padding=1,
+                                            stride=self.backbone['stride'],
+                                            dilation=dilation
+                                            ))
                 backbone.append(nn.BatchNorm2d(self.backbone['out_channels']))
                 backbone.append(nn.ReLU())
                 if l_i == 0:
-                    backbone.append(nn.MaxPool2d(2, 2))
+                    backbone.append(nn.MaxPool2d(kernel_size=3, 
+                                                stride=2, padding=1))
                 in_channels = self.backbone['out_channels']
             self.backbone = nn.Sequential(*backbone)
 
-        elif self.name == 'dalernn':
-            # if self.backbone['conv_init'].startswith('gabor'):
-            #     self.conv1 = get_gabor_conv(3, self.backbone['out_channels'],
-            #                                 f_size=11, stride=2)
-            # else:
+        elif self.name == 'dalernn' or self.name =='hgru':
             self.backbone = nn.Sequential(
                 get_gabor_conv(3, self.backbone['out_channels'],
                                f_size=11, stride=2),
-                # nn.Conv2d(self.backbone['out_channels'],
-                #           self.backbone['out_channels'],
-                #           kernel_size=11, stride=2, padding=3,
-                #         bias=False),
                 nn.BatchNorm2d(self.backbone['out_channels']),
                 nn.ReLU(inplace=True),
                 nn.MaxPool2d(

@@ -63,6 +63,8 @@ parser.add_argument('-p', '--print-freq', default=10, type=int,
                     metavar='N', help='print frequency (default: 10)')
 parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')
+parser.add_argument('--expname', default='', type=str,
+                    help='Experiment name')
 parser.add_argument('-e', '--evaluate', dest='evaluate', action='store_true',
                     help='evaluate model on validation set')
 parser.add_argument('--world-size', default=-1, type=int,
@@ -133,8 +135,9 @@ def main():
     args.cfg['nlayers'] = args.nlayers
     args.cfg['in_res'] = args.in_res
     while True:
-        checkpoint_dir = Path("checkpoints_%s/%s/%s" % (args.data.split("/")[-1],
+        checkpoint_dir = Path("checkpoints_%s/%s/%s_%s" % (args.data.split("/")[-1],
                                                         args.cfg['name'],
+                                                        args.expname,
                                                         generate_rand_string(6)))
         if not os.path.exists(checkpoint_dir):
             args.checkpoint_dir = checkpoint_dir
