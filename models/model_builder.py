@@ -31,7 +31,7 @@ class BaseModel(nn.Module):
 
         self.num_units = self.backbone['out_channels']
 
-        if self.name == 'ff':
+        if self.name.startswith('ff'):
             backbone = []
             in_channels = 3
             dilation = self.backbone['dilation']
@@ -43,7 +43,7 @@ class BaseModel(nn.Module):
                     backbone.append(nn.Conv2d(in_channels,
                                             self.backbone['out_channels'],
                                             self.backbone['fsize'],
-                                            padding=1,
+                                            padding=self.backbone['fsize'] // 2 - 1,
                                             stride=self.backbone['stride'],
                                             dilation=dilation
                                             ))
@@ -92,4 +92,25 @@ class BaseModel(nn.Module):
         x = self.final_pool(x)
         x = torch.flatten(x, 1)
         x = self.readout(x)
+        return x
+
+    def get_intermediate_layers(self, x, n):
+        """Get the n'th layer"""
+        if self.name.startswith('resnet'):
+            x = self.backbone.get_intermediate_layers(
+                x, n=1)  # retrieve post-avg-pool output
+        else:
+            x = self.backbone(x)
+        if n == 0:
+            return x
+        x = self.final_conv(x)
+        if n == 1:
+            return x
+        x = self.final_pool(x)
+        if n == 2:
+            return x
+        x = torch.flatten(x, 1)
+        x = self.readout(x)
+        if n == 3:
+            return x
         return x
