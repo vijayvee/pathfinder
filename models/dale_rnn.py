@@ -34,12 +34,6 @@ class DaleRNNcell(nn.Module):
             self.hidden_dim = in_channels
         else:
             self.hidden_dim = hidden_dim
-        # self.div = nn.Conv2d(
-        #     self.hidden_dim,
-        #     self.hidden_dim,
-        #     divnorm_fsize,
-        #     padding=(divnorm_fsize - 1) // 2,
-        #     bias=False)
         # recurrent gates computation
         self.g_exc_x = nn.Conv2d(self.in_channels, self.hidden_dim, 1)
         self.ln_e_x = nn.GroupNorm(num_groups=1, num_channels=self.hidden_dim)
@@ -89,8 +83,6 @@ class DaleRNNcell(nn.Module):
         inh = torch.relu(self.ln_out_i(g_inh * i_hat_t + (1 - g_inh) * inh))
         
         # Add a scalar multiplier to i_hat_t to control sub-contrast regime normalization?
-        # norm = torch.relu(self.div(exc)) + 1e-4
-        # exc = torch.relu(self.ln_out(exc / norm))
         return (exc, inh)
 
 
@@ -136,7 +128,6 @@ class DaleRNNLayer(nn.Module):
             outputs_e += [state[0]]
             outputs_i += [state[1]]
         if self.temporal_agg is not None:
-            # import ipdb; ipdb.set_trace()
             t_probs = nn.Softmax(dim=1)(self.temporal_agg)
             outputs_e = torch.stack(outputs_e)
             output = torch.einsum('ij,jklmn -> iklmn', t_probs, outputs_e)

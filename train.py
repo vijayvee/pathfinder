@@ -199,7 +199,7 @@ def main_worker(gpu, ngpus_per_node, args):
         print(' '.join(sys.argv), file=global_stats_file)
 
     # create model
-    if 'pathfinder' in args.data:
+    if 'pathfinder' in args.data or 'markedlong' in args.data or 'curv_contour' in args.data:
         num_classes = 2
     else:
         print("Dataset not detected %s" % args.data)
@@ -271,14 +271,14 @@ def main_worker(gpu, ngpus_per_node, args):
                 loc = 'cuda:{}'.format(args.gpu)
                 checkpoint = torch.load(args.resume, map_location=loc)
             args.start_epoch = checkpoint['epoch']
-            best_acc1 = checkpoint['best_acc1']
-            if args.gpu is not None:
-                # best_acc1 may be from a checkpoint from a different GPU
-                best_acc1 = best_acc1.to(args.gpu)
-            model.load_state_dict(checkpoint['state_dict'])
+            best_acc1 = checkpoint['val_acc1']
+            # if args.gpu is not None:
+            #     # best_acc1 may be from a checkpoint from a different GPU
+            #     best_acc1 = best_acc1.to(args.gpu)
+            model.load_state_dict(checkpoint['model'])
             optimizer.load_state_dict(checkpoint['optimizer'])
             print("=> loaded checkpoint '{}' (epoch {})"
-                  .format(args.resume, checkpoint['epoch']))
+                    .format(args.resume, checkpoint['epoch']))
         else:
             print("=> no checkpoint found at '{}'".format(args.resume))
 
@@ -298,7 +298,6 @@ def main_worker(gpu, ngpus_per_node, args):
             transforms.Resize(args.in_res),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
-            # normalize,
         ]))
 
     # idxs = np.random.choice(range(len(train_dataset.samples)), 10000)
@@ -323,10 +322,13 @@ def main_worker(gpu, ngpus_per_node, args):
         train_dataset, batch_size=args.batch_size, shuffle=(
             train_sampler is None),
         num_workers=args.workers, pin_memory=True, sampler=train_sampler)
-    # import ipdb; ipdb.set_trace()
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
+        if args.evaluate:
+            val_acc1, _ = validate(
+                val_loader, model, criterion, optimizer, epoch, args)
+            return
         # adjust_learning_rate(optimizer, epoch, args)
         if epoch == 0:
             if not args.multiprocessing_distributed or (args.multiprocessing_distributed
@@ -336,10 +338,6 @@ def main_worker(gpu, ngpus_per_node, args):
                 torch.save(state, '%s/pathfinder_checkpoint_%s.pth' %
                            (args.checkpoint_dir, str(args.model_name)))
         # train for one epoch
-        if args.evaluate:
-            val_acc1, _ = validate(
-                val_loader, model, criterion, optimizer, epoch, args)
-            return
         acc1 = train(train_loader, model, criterion, optimizer, epoch, args)
         val_acc1, _ = validate(
             val_loader, model, criterion, optimizer, epoch, args)
