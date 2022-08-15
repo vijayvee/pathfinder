@@ -23,6 +23,7 @@ import torch.utils.data.distributed
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
+import torchvision.transforms.functional as F
 
 from models.model_builder import BaseModel
 from fvcore.nn import FlopCountAnalysis
@@ -99,9 +100,11 @@ export NCCL_P2P_DISABLE=1
 export NCCL_SOCKET_IFNAME=lo
 """
 
-seed = 123
-torch.manual_seed(seed)
-np.random.seed(seed)
+
+def seed_worker(worker_id):
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
 
 
 class Config():
@@ -136,15 +139,17 @@ def main():
     args.cfg['in_res'] = args.in_res
     while True:
         checkpoint_dir = Path("checkpoints_%s/%s/%s_%s" % (args.data.split("/")[-1],
-                                                        args.cfg['name'],
-                                                        args.expname,
-                                                        generate_rand_string(6)))
+                                                           args.cfg['name'],
+                                                           args.expname,
+                                                           generate_rand_string(6)))
         if not os.path.exists(checkpoint_dir):
             args.checkpoint_dir = checkpoint_dir
             break
     args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    if args.seed is None:
+        args.seed = 123
     if args.seed is not None:
-        # random.seed(args.seed)
+        random.seed(args.seed)
         torch.manual_seed(args.seed)
         np.random.seed(args.seed)
         cudnn.deterministic = True
@@ -278,7 +283,7 @@ def main_worker(gpu, ngpus_per_node, args):
             model.load_state_dict(checkpoint['model'])
             optimizer.load_state_dict(checkpoint['optimizer'])
             print("=> loaded checkpoint '{}' (epoch {})"
-                    .format(args.resume, checkpoint['epoch']))
+                  .format(args.resume, checkpoint['epoch']))
         else:
             print("=> no checkpoint found at '{}'".format(args.resume))
 
@@ -296,6 +301,7 @@ def main_worker(gpu, ngpus_per_node, args):
         traindir,
         transforms.Compose([
             transforms.Resize(args.in_res),
+            ZoomOut(scale=(1., 1.3)),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
         ]))
@@ -318,10 +324,18 @@ def main_worker(gpu, ngpus_per_node, args):
     else:
         train_sampler = None
 
+    g = torch.Generator()
+    g.manual_seed(123)
+
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=(
             train_sampler is None),
-        num_workers=args.workers, pin_memory=True, sampler=train_sampler)
+        num_workers=args.workers,
+        worker_init_fn=seed_worker,
+        generator=g,
+        pin_memory=True,
+        sampler=train_sampler)
+
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
@@ -540,6 +554,36 @@ class AverageMeter(object):
     def __str__(self):
         fmtstr = '{name} {val' + self.fmt + '} ({avg' + self.fmt + '})'
         return fmtstr.format(**self.__dict__)
+
+
+class ZoomOut(nn.Module):
+    """Custom transform to perform zoom out image augmentation"""
+
+    def __init__(self, scale, fill=0, padding_mode="constant"):
+        """
+        Args:
+        scale: (scale_low, scale_high) specifying what % of original image height
+        is retained (>100%)
+        fill: (int) integer value to pad with
+        padding_mode: Mode of padding (e.g. constant, reflect etc.)
+        """
+        super().__init__()
+        self.scale_low, self.scale_high = scale
+        self.fill = fill
+        self.padding_mode = padding_mode
+
+    def forward(self, x):
+        if x.size[-1] != x.size[-2]:
+            raise ValueError("Only works on square images")
+        h, w = x.size[-2], x.size[-1]
+        new_h = h * torch.empty(1).uniform_(self.scale_low,
+                                            self.scale_high).item()
+        if (new_h - h) < 1:
+            return x
+        pad_h = int(new_h - h)
+        x = F.pad(x, pad_h)
+        x = F.resize(x, (h, w), F.InterpolationMode.BICUBIC)
+        return x
 
 
 class ProgressMeter(object):
