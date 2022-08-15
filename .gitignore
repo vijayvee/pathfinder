@@ -1,10 +1,8 @@
 *.pyc
-models/__pycache__
-*/__pycache__/
-*/*/__pycache__/
-*/*/*/__pycache__/
+*/__pycache__
 curv_contour_length_9_data/
 curv_contour_length_9_data/*
 val/*
 checkpoints*
 models/unused
+models/__pycache__
