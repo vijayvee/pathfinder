@@ -93,18 +93,12 @@ global_stats_file = None
 If you are using NCCL backend, remember to set 
 the following environment variables in your Ampere series GPU.
 
-export NCCL_DEBUG=INFO
-export NCCL_DEBUG_SUBSYS=ALL
-export NCCL_IB_DISABLE=1
-export NCCL_P2P_DISABLE=1
-export NCCL_SOCKET_IFNAME=lo
+export NCCL_DEBUG=INFO \
+export NCCL_DEBUG_SUBSYS=ALL \
+export NCCL_IB_DISABLE=1 \
+export NCCL_P2P_DISABLE=1 \
+export NCCL_SOCKET_IFNAME=lo 
 """
-
-
-def seed_worker(worker_id):
-    worker_seed = torch.initial_seed() % 2**32
-    np.random.seed(worker_seed)
-    random.seed(worker_seed)
 
 
 class Config():
@@ -138,10 +132,11 @@ def main():
     args.cfg['nlayers'] = args.nlayers
     args.cfg['in_res'] = args.in_res
     while True:
-        checkpoint_dir = Path("checkpoints_%s/%s/%s_%s" % (args.data.split("/")[-1],
+        checkpoint_dir = Path("ckpt_iclr/%s/%s/%s_%s_seed_%s" % (args.data.split("/")[-1],
                                                            args.cfg['name'],
                                                            args.expname,
-                                                           generate_rand_string(6)))
+                                                           generate_rand_string(6),
+                                                           args.seed))
         if not os.path.exists(checkpoint_dir):
             args.checkpoint_dir = checkpoint_dir
             break
@@ -153,11 +148,7 @@ def main():
         torch.manual_seed(args.seed)
         np.random.seed(args.seed)
         cudnn.deterministic = True
-        warnings.warn('You have chosen to seed training. '
-                      'This will turn on the CUDNN deterministic setting, '
-                      'which can slow down your training considerably! '
-                      'You may see unexpected behavior when restarting '
-                      'from checkpoints.')
+        cudnn.benchmark = False
 
     if args.gpu is not None:
         warnings.warn('You have chosen a specific GPU. This will completely '
@@ -287,21 +278,15 @@ def main_worker(gpu, ngpus_per_node, args):
         else:
             print("=> no checkpoint found at '{}'".format(args.resume))
 
-    cudnn.benchmark = True
 
     # Data loading code
     traindir = os.path.join(args.data, 'train')
     valdir = os.path.join(args.data, 'val')
 
-    # TODO(vveeraba): Replace following normalization with pathfinder mean and std
-    # normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-    #                                  std=[0.229, 0.224, 0.225])
-
     train_dataset = datasets.ImageFolder(
         traindir,
         transforms.Compose([
             transforms.Resize(args.in_res),
-            ZoomOut(scale=(1., 1.3)),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
         ]))
@@ -313,7 +298,6 @@ def main_worker(gpu, ngpus_per_node, args):
         datasets.ImageFolder(valdir, transforms.Compose([
             transforms.Resize(args.in_res),
             transforms.ToTensor(),
-            # normalize,
         ])),
         batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
@@ -325,14 +309,12 @@ def main_worker(gpu, ngpus_per_node, args):
         train_sampler = None
 
     g = torch.Generator()
-    g.manual_seed(123)
+    g.manual_seed(args.seed)
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=(
             train_sampler is None),
         num_workers=args.workers,
-        worker_init_fn=seed_worker,
-        generator=g,
         pin_memory=True,
         sampler=train_sampler)
 
@@ -352,6 +334,7 @@ def main_worker(gpu, ngpus_per_node, args):
                 torch.save(state, '%s/pathfinder_checkpoint_%s.pth' %
                            (args.checkpoint_dir, str(args.model_name)))
         # train for one epoch
+        print("Starting epoch %s" % epoch)
         acc1 = train(train_loader, model, criterion, optimizer, epoch, args)
         val_acc1, _ = validate(
             val_loader, model, criterion, optimizer, epoch, args)

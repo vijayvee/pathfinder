@@ -4,7 +4,6 @@ import torch
 import numpy as np
 from torch.nn import init
 
-#torch.manual_seed(42)
 
 class FFConvNet(nn.Module):
 
@@ -96,7 +95,7 @@ class hConvGRUCell(nn.Module):
 
         if self.batchnorm:
             #self.bn = nn.ModuleList([nn.GroupNorm(25, 25, eps=1e-03) for i in range(32)])
-            self.bn = nn.ModuleList([nn.BatchNorm2d(hidden_size, eps=1e-03) for i in range(32)])
+            self.bn = nn.ModuleList([nn.BatchNorm2d(hidden_size, eps=1e-03) for i in range(self.timesteps * 4)])
         else:
             self.n = nn.Parameter(torch.randn(self.timesteps,1,1))
 
@@ -168,7 +167,7 @@ class hConvGRU(nn.Module):
         super().__init__()
         self.timesteps = timesteps
         
-        self.unit1 = hConvGRUCell(hidden_dim, hidden_dim, filt_size)
+        self.unit1 = hConvGRUCell(hidden_dim, hidden_dim, filt_size, timesteps=timesteps)
         print("Training with filter size:",filt_size,"x",filt_size)
         self.unit1.train()
         

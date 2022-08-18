@@ -27,7 +27,10 @@ class BaseModel(nn.Module):
                                     exc_fsize=self.backbone['fsize'],
                                     )
         elif self.name.startswith("hgru"):
-            self.rnn = hConvGRU(filt_size=11, hidden_dim=self.backbone['out_channels'])
+            self.rnn = hConvGRU(
+                filt_size=self.backbone['fsize'],
+                hidden_dim=self.backbone['out_channels'],
+                timesteps=self.backbone['timesteps'])
 
         self.num_units = self.backbone['out_channels']
 
@@ -38,24 +41,24 @@ class BaseModel(nn.Module):
             for l_i in range(self.nlayers):
                 if l_i == 0:
                     backbone.append(get_gabor_conv(3, self.backbone['out_channels'],
-                                                    f_size=11, stride=2))
+                                                   f_size=11, stride=2))
                 else:
                     backbone.append(nn.Conv2d(in_channels,
-                                            self.backbone['out_channels'],
-                                            self.backbone['fsize'],
-                                            padding=self.backbone['fsize'] // 2 - 1,
-                                            stride=self.backbone['stride'],
-                                            dilation=dilation
-                                            ))
+                                              self.backbone['out_channels'],
+                                              self.backbone['fsize'],
+                                              padding=self.backbone['fsize'] // 2 - 1,
+                                              stride=self.backbone['stride'],
+                                              dilation=dilation
+                                              ))
                 backbone.append(nn.BatchNorm2d(self.backbone['out_channels']))
                 backbone.append(nn.ReLU())
                 if l_i == 0:
-                    backbone.append(nn.MaxPool2d(kernel_size=3, 
-                                                stride=2, padding=1))
+                    backbone.append(nn.MaxPool2d(kernel_size=3,
+                                                 stride=2, padding=1))
                 in_channels = self.backbone['out_channels']
             self.backbone = nn.Sequential(*backbone)
 
-        elif self.name == 'dalernn' or self.name =='hgru':
+        elif self.name == 'dalernn' or self.name == 'hgru':
             self.backbone = nn.Sequential(
                 get_gabor_conv(3, self.backbone['out_channels'],
                                f_size=11, stride=2),
