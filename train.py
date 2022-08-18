@@ -132,8 +132,9 @@ def main():
     args.cfg['nlayers'] = args.nlayers
     args.cfg['in_res'] = args.in_res
     while True:
-        checkpoint_dir = Path("ckpt_iclr/%s/%s/%s_%s_seed_%s" % (args.data.split("/")[-1],
+        checkpoint_dir = Path("ckpt_iclr/%s/%s/%s_%s_%s_seed_%s" % (args.data.split("/")[-1],
                                                            args.cfg['name'],
+                                                           args.cfg['name'] + str(args.cfg['nlayers']),
                                                            args.expname,
                                                            generate_rand_string(6),
                                                            args.seed))
@@ -201,11 +202,10 @@ def main_worker(gpu, ngpus_per_node, args):
         print("Dataset not detected %s" % args.data)
         return
 
-    print("=> creating model '{}'".format(
-        args.cfg['name'] + str(args.cfg['nlayers'])))
+    print("=> creating model '{}'".format(args.cfg['name']))
     args.cfg = create_config(args.cfg)
     model = BaseModel(args.cfg)
-    model_name = args.cfg.name + str(args.cfg.nlayers)
+    model_name = args.cfg.name  # + str(args.cfg.nlayers)
     args.model_name = model_name
 
     if args.rank == 0:

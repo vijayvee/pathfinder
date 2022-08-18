@@ -1,13 +1,14 @@
 """BaseModel class that builds other models"""
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
+
 from models import resnet as models_resnet
 from models.dale_rnn import DaleRNNLayer
-from models.utils import get_gabor_conv
 from models.hgru import hConvGRU
+from models.utils import get_gabor_conv
 
 
 class BaseModel(nn.Module):
@@ -74,12 +75,15 @@ class BaseModel(nn.Module):
             pass
         elif self.name == 'ln_ff':
             pass
-        elif self.name == 'resnet':
-            self.backbone = models_resnet.__dict__['resnet%s' % self.nlayers](pretrained=False,
-                                                                              num_classes=self.num_classes)
-            self.num_units = backbone.out_dim
+        elif self.name.startswith('resnet'):
+            self.backbone = models_resnet.__dict__['resnet%s_thin' % self.nlayers](inplanes=self.backbone['out_channels'],
+                                                                                   pretrained=False,
+                                                                                   num_classes=self.num_classes)
+            self.num_units = self.backbone.out_dim
         elif self.name == 'r_resnet':
             pass
+        else:
+            raise NotImplementedError(self.backbone)
         self.final_conv = nn.Conv2d(self.num_units, 2, 1)
         self.final_pool = nn.AdaptiveMaxPool2d((1, 1))
         self.readout = nn.Linear(2, self.num_classes)
