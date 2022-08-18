@@ -4,9 +4,10 @@
             {
                 'rnn_layer': 'hgru',
                 'conv_init': 'gabor',
-                'fsize': 11,
+                'fsize': 9,
                 'stride': 2,
                 'out_channels': 32,
+                'timesteps': 12,
             },
         ],
     'name': 'hgru',

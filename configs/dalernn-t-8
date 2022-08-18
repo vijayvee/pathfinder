@@ -4,9 +4,9 @@
             {
                 'rnn_layer': 'dalernn',
                 'conv_init': 'gabor',
-                'fsize': 9,
+                'fsize': 11,
                 'stride': 2,
-                'out_channels': 32,
+                'out_channels': 24,
                 'timesteps': 8,
             },
         ],
