@@ -8,7 +8,7 @@
                 'stride': 2,
                 'out_channels': 32,
                 'timesteps': 12,
-                'init_': 'None',
+                'init_': 'ortho',
             },
         ],
     'name': 'dalernn',
