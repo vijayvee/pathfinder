@@ -3,6 +3,7 @@ import numpy as np
 import torch  # pylint: disable=import-error
 import torch.nn as nn  # pylint: disable=import-error
 import torch.nn.functional as F  # pylint: disable=import-error
+from torch.nn import init
 
 
 def nonnegative_weights_init(m):
@@ -27,6 +28,7 @@ class DaleRNNcell(nn.Module):
                  exc_fsize=7,
                  inh_fsize=5,
                  device='cuda',
+                 init_ = None,
                  ):
         super(DaleRNNcell, self).__init__()
         self.in_channels = in_channels
@@ -63,6 +65,28 @@ class DaleRNNcell(nn.Module):
         # self.w_inh_e = nn.Conv2d(self.hidden_dim, self.hidden_dim, inh_fsize, padding=(inh_fsize-1) // 2)
         # nonnegative_weights_init(self.div)
 
+        if init_ == 'ortho':
+            print("initializing RNN weights with Orthogonal Initialization")
+            init.orthogonal(self.g_exc_x.weight)
+            init.orthogonal(self.g_exc_e.weight)
+            init.orthogonal(self.g_inh_x.weight)
+            init.orthogonal(self.g_inh_i.weight)
+
+            init.orthogonal(self.w_exc_x.weight)
+            init.orthogonal(self.w_exc_ei.weight)
+            init.orthogonal(self.w_inh_x.weight)
+            init.orthogonal(self.w_inh_ei.weight)
+
+            init.constant(self.g_exc_x.bias, 0.)
+            init.constant(self.g_exc_e.bias, 0.)
+            init.constant(self.g_inh_x.bias, 0.)
+            init.constant(self.g_inh_i.bias, 0.)
+
+            init.constant(self.w_exc_x.bias, 0.)
+            init.constant(self.w_exc_ei.bias, 0.)
+            init.constant(self.w_inh_x.bias, 0.)
+            init.constant(self.w_inh_ei.bias, 0.)
+
     def forward(self, input, hidden):
         # TODO (make symmetric horizontal connections)
         exc, inh = hidden
@@ -74,14 +98,14 @@ class DaleRNNcell(nn.Module):
         e_hat_t = torch.relu(
             self.w_exc_x(input) +
             self.w_exc_ei(torch.cat((exc, inh), 1)))
-        
+
         i_hat_t = torch.relu(
             self.w_inh_x(input) +
             self.w_inh_ei(torch.cat((exc, inh), 1)))
 
         exc = torch.relu(self.ln_out_e(g_exc * e_hat_t + (1 - g_exc) * exc))
         inh = torch.relu(self.ln_out_i(g_inh * i_hat_t + (1 - g_inh) * inh))
-        
+
         # Add a scalar multiplier to i_hat_t to control sub-contrast regime normalization?
         return (exc, inh)
 
@@ -96,6 +120,7 @@ class DaleRNNLayer(nn.Module):
                  timesteps=4,
                  device='cuda',
                  temporal_agg=False,
+                 init_=None,
                  ):
         super(DaleRNNLayer, self).__init__()
         self.in_channels = in_channels
@@ -104,6 +129,7 @@ class DaleRNNLayer(nn.Module):
         self.exc_fsize = exc_fsize
         self.inh_fsize = inh_fsize
         self.timesteps = timesteps
+        self.init_ = init_
         print("%s steps of recurrence" % self.timesteps)
         self.device = device
         self.rnn_cell = DaleRNNcell(in_channels=self.in_channels,
@@ -111,7 +137,8 @@ class DaleRNNLayer(nn.Module):
                                     divnorm_fsize=self.divnorm_fsize,
                                     exc_fsize=self.exc_fsize,
                                     inh_fsize=self.inh_fsize,
-                                    device=self.device)
+                                    device=self.device,
+                                    init_=self.init_)
         self.emb_exc = nn.Conv2d(self.in_channels, self.hidden_dim, 1)
         self.emb_inh = nn.Conv2d(self.in_channels, self.hidden_dim, 1)
         if temporal_agg:

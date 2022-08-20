@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from models import resnet as models_resnet
 from models.dale_rnn import DaleRNNLayer
 from models.hgru import hConvGRU
+from models.convgru import ConvGRU
 from models.utils import get_gabor_conv
 
 
@@ -26,12 +27,20 @@ class BaseModel(nn.Module):
                                     self.backbone['out_channels'],
                                     timesteps=self.backbone['timesteps'],
                                     exc_fsize=self.backbone['fsize'],
+                                    init_=self.backbone['init_']
                                     )
+
         elif self.name.startswith("hgru"):
             self.rnn = hConvGRU(
                 filt_size=self.backbone['fsize'],
                 hidden_dim=self.backbone['out_channels'],
                 timesteps=self.backbone['timesteps'])
+
+        elif self.name.startswith("gru"):
+            self.rnn = ConvGRU(self.backbone['out_channels'],
+                               self.backbone['out_channels'],
+                               self.backbone['fsize'],
+                               self.backbone['timesteps'])
 
         self.num_units = self.backbone['out_channels']
 
@@ -59,7 +68,7 @@ class BaseModel(nn.Module):
                 in_channels = self.backbone['out_channels']
             self.backbone = nn.Sequential(*backbone)
 
-        elif self.name == 'dalernn' or self.name == 'hgru':
+        elif self.name == 'dalernn' or self.name == 'hgru' or self.name == 'gru':
             self.backbone = nn.Sequential(
                 get_gabor_conv(3, self.backbone['out_channels'],
                                f_size=11, stride=2),
