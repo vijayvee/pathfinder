@@ -2,15 +2,15 @@
     'backbone':
         [
             {
-                'rnn_layer': 'hgru',
+                'rnn_layer': 'gru',
                 'conv_init': 'gabor',
                 'fsize': 9,
                 'stride': 2,
-                'out_channels': 38,
+                'out_channels': 24,
                 'timesteps': 12,
             },
         ],
-    'name': 'hgru',
+    'name': 'gru',
     'num_classes': 2,
     'nlayers': -1,
 }
