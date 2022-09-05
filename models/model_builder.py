@@ -29,12 +29,14 @@ class BaseModel(nn.Module):
                                     exc_fsize=self.backbone['fsize'],
                                     init_=self.backbone['init_']
                                     )
+            self.num_units = self.backbone['out_channels']
 
         elif self.name.startswith("hgru"):
             self.rnn = hConvGRU(
                 filt_size=self.backbone['fsize'],
                 hidden_dim=self.backbone['out_channels'],
                 timesteps=self.backbone['timesteps'])
+            self.num_units = self.backbone['out_channels']
 
         elif self.name.startswith("gru"):
             self.rnn = ConvGRU(self.backbone['out_channels'],
@@ -42,7 +44,7 @@ class BaseModel(nn.Module):
                                self.backbone['fsize'],
                                self.backbone['timesteps'])
 
-        self.num_units = self.backbone['out_channels']
+            self.num_units = self.backbone['out_channels']
 
         if self.name.startswith('ff'):
             backbone = []
@@ -84,10 +86,15 @@ class BaseModel(nn.Module):
             pass
         elif self.name == 'ln_ff':
             pass
-        elif self.name.startswith('resnet'):
+        elif self.name.startswith('resnet_thin'):
             self.backbone = models_resnet.__dict__['resnet%s_thin' % self.nlayers](inplanes=self.backbone['out_channels'],
                                                                                    pretrained=False,
                                                                                    num_classes=self.num_classes)
+            self.num_units = self.backbone.out_dim
+        elif self.name.startswith('resnet'):
+            self.backbone = models_resnet.__dict__['resnet%s' % self.nlayers](inplanes=self.backbone['out_channels'],
+                                                                                pretrained=False,
+                                                                                num_classes=self.num_classes)
             self.num_units = self.backbone.out_dim
         elif self.name == 'r_resnet':
             pass

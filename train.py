@@ -134,7 +134,6 @@ def main():
     while True:
         checkpoint_dir = Path("ckpt_iclr/%s/%s/%s_%s_%s_seed_%s" % (args.data.split("/")[-1],
                                                            args.cfg['name'],
-                                                           args.cfg['name'] + str(args.cfg['nlayers']),
                                                            args.expname,
                                                            generate_rand_string(6),
                                                            args.seed))

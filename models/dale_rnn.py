@@ -49,8 +49,8 @@ class DaleRNNcell(nn.Module):
             num_groups=1, num_channels=self.hidden_dim)
         self.ln_out_i = nn.GroupNorm(
             num_groups=1, num_channels=self.hidden_dim)
-        self.ln_out = nn.GroupNorm(
-            num_groups=1, num_channels=self.hidden_dim)
+        # self.ln_out = nn.GroupNorm(
+        #     num_groups=1, num_channels=self.hidden_dim)
         # feedforward stimulus drive
         self.w_exc_x = nn.Conv2d(self.in_channels, self.hidden_dim, 1)
         self.w_inh_x = nn.Conv2d(self.in_channels, self.hidden_dim, 1)
@@ -149,7 +149,8 @@ class DaleRNNLayer(nn.Module):
     def forward(self, input):
         outputs_e = []
         outputs_i = []
-        state = (self.emb_exc(input), self.emb_inh(input))
+        # state = (self.emb_exc(input), self.emb_inh(input))
+        state = (torch.zeros_like(input), torch.zeros_like(input))
         for _ in range(self.timesteps):
             state = self.rnn_cell(input, state)
             outputs_e += [state[0]]
