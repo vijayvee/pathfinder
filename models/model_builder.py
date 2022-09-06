@@ -21,9 +21,9 @@ class BaseModel(nn.Module):
         self.backbone = cfg.backbone[0]
         self.nlayers = cfg.nlayers
         self.num_classes = cfg.num_classes
-
+        num_v1_cells = max(self.backbone['out_channels'], 32)
         if self.name.startswith("dalernn"):
-            self.rnn = DaleRNNLayer(self.backbone['out_channels'],
+            self.rnn = DaleRNNLayer(num_v1_cells,
                                     self.backbone['out_channels'],
                                     timesteps=self.backbone['timesteps'],
                                     exc_fsize=self.backbone['fsize'],
@@ -72,9 +72,9 @@ class BaseModel(nn.Module):
 
         elif self.name == 'dalernn' or self.name == 'hgru' or self.name == 'gru':
             self.backbone = nn.Sequential(
-                get_gabor_conv(3, self.backbone['out_channels'],
+                get_gabor_conv(3, num_v1_cells,
                                f_size=11, stride=2),
-                nn.BatchNorm2d(self.backbone['out_channels']),
+                nn.BatchNorm2d(num_v1_cells),
                 nn.ReLU(inplace=True),
                 nn.MaxPool2d(
                     kernel_size=3, stride=2, padding=1),

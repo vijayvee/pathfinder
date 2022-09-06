@@ -132,7 +132,7 @@ def main():
     args.cfg['nlayers'] = args.nlayers
     args.cfg['in_res'] = args.in_res
     while True:
-        checkpoint_dir = Path("ckpt_iclr/%s/%s/%s_%s_%s_seed_%s" % (args.data.split("/")[-1],
+        checkpoint_dir = Path("ckpt_iclr/%s/%s/%s_%s_seed_%s" % (args.data.split("/")[-1],
                                                            args.cfg['name'],
                                                            args.expname,
                                                            generate_rand_string(6),
@@ -316,7 +316,6 @@ def main_worker(gpu, ngpus_per_node, args):
         num_workers=args.workers,
         pin_memory=True,
         sampler=train_sampler)
-
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)

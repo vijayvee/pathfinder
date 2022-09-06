@@ -149,8 +149,13 @@ class DaleRNNLayer(nn.Module):
     def forward(self, input):
         outputs_e = []
         outputs_i = []
+        n_x, _, w_x, h_x = input.shape
         # state = (self.emb_exc(input), self.emb_inh(input))
-        state = (torch.zeros_like(input), torch.zeros_like(input))
+        # state = (torch.zeros_like(input), torch.zeros_like(input))
+        state = (torch.zeros(n_x, self.hidden_dim, w_x, h_x),
+                torch.zeros(n_x, self.hidden_dim, w_x, h_x))
+        if torch.cuda.is_available():
+            state = (state[0].cuda(), state[1].cuda())
         for _ in range(self.timesteps):
             state = self.rnn_cell(input, state)
             outputs_e += [state[0]]
