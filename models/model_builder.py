@@ -9,11 +9,12 @@ from models import resnet as models_resnet
 from models.dale_rnn import DaleRNNLayer
 from models.hgru import hConvGRU
 from models.convgru import ConvGRU
+from models.ext_rnn import ExtRNNLayer
 from models.utils import get_gabor_conv
 
 
 class BaseModel(nn.Module):
-    def __init__(self, cfg):
+    def __init__(self, cfg, args):
         super(BaseModel, self).__init__()
         self.cfg = cfg
         self.in_res = cfg.in_res
@@ -21,11 +22,14 @@ class BaseModel(nn.Module):
         self.backbone = cfg.backbone[0]
         self.nlayers = cfg.nlayers
         self.num_classes = cfg.num_classes
-        num_v1_cells = max(self.backbone['out_channels'], 32)
+        self.timesteps = args.timesteps if args.timesteps else self.backbone['timesteps']
+        self.num_ori = 32  # max(32, self.backbone['out_channels'])
         if self.name.startswith("dalernn"):
-            self.rnn = DaleRNNLayer(num_v1_cells,
+            self.rnn = DaleRNNLayer( #self.backbone['out_channels'],
+                                    self.num_ori,
                                     self.backbone['out_channels'],
-                                    timesteps=self.backbone['timesteps'],
+                                    # timesteps=self.backbone['timesteps'],
+                                    timesteps=self.timesteps,
                                     exc_fsize=self.backbone['fsize'],
                                     init_=self.backbone['init_']
                                     )
@@ -39,11 +43,22 @@ class BaseModel(nn.Module):
             self.num_units = self.backbone['out_channels']
 
         elif self.name.startswith("gru"):
-            self.rnn = ConvGRU(self.backbone['out_channels'],
+            self.rnn = ConvGRU( #self.backbone['out_channels'],
+                               self.num_ori,
                                self.backbone['out_channels'],
                                self.backbone['fsize'],
                                self.backbone['timesteps'])
 
+            self.num_units = self.backbone['out_channels']
+        
+        elif self.name.startswith("extrnn"):
+            self.rnn = ExtRNNLayer( #self.backbone['out_channels'],
+                                    self.num_ori,
+                                    self.backbone['out_channels'],
+                                    timesteps=self.timesteps,
+                                    exc_fsize=self.backbone['fsize'],
+                                    init_=self.backbone['init_']
+                                    )
             self.num_units = self.backbone['out_channels']
 
         if self.name.startswith('ff'):
@@ -70,11 +85,11 @@ class BaseModel(nn.Module):
                 in_channels = self.backbone['out_channels']
             self.backbone = nn.Sequential(*backbone)
 
-        elif self.name == 'dalernn' or self.name == 'hgru' or self.name == 'gru':
+        elif self.name == 'dalernn' or self.name == 'hgru' or self.name == 'gru' or self.name == 'extrnn':
             self.backbone = nn.Sequential(
-                get_gabor_conv(3, num_v1_cells,
+                get_gabor_conv(3, self.num_ori,
                                f_size=11, stride=2),
-                nn.BatchNorm2d(num_v1_cells),
+                nn.BatchNorm2d(self.num_ori),
                 nn.ReLU(inplace=True),
                 nn.MaxPool2d(
                     kernel_size=3, stride=2, padding=1),
