@@ -1,0 +1,15 @@
+{
+    'backbone':
+        [
+            {
+                'conv_init': None,
+                'layer': 'resnet',
+                'output_layer': 'res4',
+                'out_channels': 64,
+                'timesteps': 0,
+                },
+        ],
+    'name': 'resnet',
+    'num_classes': 2,
+    'nlayers': 18,
+}

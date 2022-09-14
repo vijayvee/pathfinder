@@ -1,3 +1,7 @@
+# implements the HGRU model from the paper https://arxiv.org/abs/1805.08315
+# Code is almost copied from https://github.com/serre-lab/hgru-pytorch/blob/master/hgru.py
+# Only modification to use hgru on arbitrary number of timesteps (original code only works for 8 timesteps)
+
 import torch.nn as nn
 import torch.nn.functional as F
 import torch

@@ -1,3 +1,6 @@
+# Implements a Convolutional GRU Cell
+# Code almost copied from https://github.com/jacobkimmel/pytorch_convgru/blob/master/convgru.py
+
 import torch
 import torch.nn as nn
 import numpy as np
