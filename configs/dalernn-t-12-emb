@@ -1,0 +1,17 @@
+{
+    'backbone':
+        [
+            {
+                'rnn_layer': 'dalernn',
+                'conv_init': 'gabor',
+                'fsize': 9,
+                'stride': 2,
+                'out_channels': 32,
+                'timesteps': 12,
+                'init_': 'None',
+            },
+        ],
+    'name': 'dalernn',
+    'num_classes': 2,
+    'nlayers': -1,
+}

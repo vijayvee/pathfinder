@@ -49,6 +49,7 @@ class DaleRNNcell(nn.Module):
             num_groups=1, num_channels=self.hidden_dim)
         self.ln_out_i = nn.GroupNorm(
             num_groups=1, num_channels=self.hidden_dim)
+
         # self.ln_out = nn.GroupNorm(
         #     num_groups=1, num_channels=self.hidden_dim)
         # feedforward stimulus drive

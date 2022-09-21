@@ -1,0 +1,17 @@
+{
+    'backbone':
+        [
+            {
+                'rnn_layer': 'extrnn',
+                'conv_init': 'gabor',
+                'fsize': 7,
+                'stride': 2,
+                'out_channels': 66,
+                'timesteps': 12,
+                'init_': 'None',
+            },
+        ],
+    'name': 'extrnn',
+    'num_classes': 2,
+    'nlayers': -1,
+}
