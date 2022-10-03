@@ -22,11 +22,11 @@ def move_train_val_test(train: List, val: List, test: List) -> None:
 
 
 if __name__ == "__main__":
-    train_txt = "/mnt/sphere/projects/contour_integration/pathfinder_full/curv_contour_length_9/train.txt"
-    val_txt = "/mnt/sphere/projects/contour_integration/pathfinder_full/curv_contour_length_9/val.txt"
-    test_txt = "/mnt/sphere/projects/contour_integration/pathfinder_full/curv_contour_length_9/test.txt"
+    train_txt = "<PATH_TO_TRAIN>"
+    val_txt = "<PATH_TO_VAL>"
+    test_txt = "<PATH_TO_TEST>"
 
-    data_root = '/mnt/sphere/projects/contour_integration/pathfinder_full/curv_contour_length_9/'
+    data_root = '<PATH_TO_DATA_ROOT>'
 
     train_path = os.path.join(data_root, "train")
     val_path = os.path.join(data_root, "val")

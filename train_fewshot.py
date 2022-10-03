@@ -286,7 +286,7 @@ def main_worker(gpu, ngpus_per_node, args):
     # Data loading code
     traindir = os.path.join(args.data, 'train')
     valdir = os.path.join(args.data, 'val')
-    small_valdir = '/mnt/sphere/projects/contour_integration/pathfinder_full/curv_contour_length_18/imgs_sample/rnd_pf18_10k'
+    small_valdir = '<PATH_TO_SMALL_VAL>'
 
     train_dataset = datasets.ImageFolder(
         traindir,

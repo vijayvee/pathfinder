@@ -153,7 +153,6 @@ def create_config(cfg):
     return config
 
 if __name__ == "__main__":
-    # args.timesteps = 8  # works well for PF9
     for ts in range(14, 18):
         cfg = load_cfg("dalernn-t-12")
         args = Config()
@@ -169,18 +168,10 @@ if __name__ == "__main__":
             model.cuda()
 
             # Following model trained 50 epochs
-            ckpt = torch.load("ckpt_iclr/curv_contour_length_14/dalernn/dalernn3_test_pf14_dalernn_ts12_fsize9_skpewc_seed_10/pathfinder_checkpoint_best_dalernn.pth")
-            # Following model trained 5 epochs
-            # ckpt = torch.load("ckpt_iclr/curv_contour_length_14/dalernn/wide_pf14_dalernn_ts12_fsize9_zgqtob_seed_10/pathfinder_checkpoint_best_dalernn.pth")
-            # Following model trained on PF18 by Yuan
-            # ckpt = torch.load('/home/AD/yutang/pathfinder-master/ckpt_iclr/curv_contour_length_18_1M/dalernn/dalernn3_pf18_dalernn_ts12_fsize9_oc32_b256_asovgy_seed_10/pathfinder_checkpoint_best_dalernn.pth')
-            # ckpt = torch.load("ckpt_iclr/curv_contour_length_14/extrnn/repeat_64channels_pf14_extrnn_ts12_fsize9_mqmlvg_seed_10/pathfinder_checkpoint_best_extrnn.pth", map_location='cuda:0')
+            ckpt = torch.load("<PATH_TO_CKPT>")
             model.load_state_dict(ckpt['model'])
 
-            # valdir = '/mnt/sphere/projects/contour_integration/pathfinder_full/curv_contour_length_9/rnd_pf9_10k'
-            valdir = '/mnt/sphere/projects/contour_integration/pathfinder_full/curv_contour_length_18/imgs_sample/rnd_pf18_10k'
-            # valdir = '/home/vveeraba/src/pathfinder_full/curv_contour_length_14/val'
-            # print("Trained on PF14, eval on PF9")
+            valdir = '<PATH_TO_VALDIR>'
             print("Trained on PF14, eval on PF18")
             
             val_loader = torch.utils.data.DataLoader(
