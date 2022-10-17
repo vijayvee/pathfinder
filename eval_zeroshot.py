@@ -179,7 +179,6 @@ if __name__ == "__main__":
 
             # valdir = '/mnt/sphere/projects/contour_integration/pathfinder_full/curv_contour_length_9/rnd_pf9_10k'
             valdir = '/mnt/sphere/projects/contour_integration/pathfinder_full/curv_contour_length_18/imgs_sample/rnd_pf18_10k'
-            # valdir = '/home/vveeraba/src/pathfinder_full/curv_contour_length_14/val'
             # print("Trained on PF14, eval on PF9")
             print("Trained on PF14, eval on PF18")
             
