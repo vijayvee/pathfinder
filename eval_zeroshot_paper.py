@@ -165,11 +165,11 @@ if __name__ == "__main__":
     dale_timesteps = {6: 7, 9: 8, 14: 12, 16: 13, 18: 14}
     results = {length: {model: 0 for model, _ in cfgs} for length in [6, 9, 14, 16, 18]}
 
-    length2data = {6: "/mnt/sphere/projects/contour_integration/pathfinder_full/curv_baseline/rnd_pf6_20k",
-                    9: "/mnt/sphere/projects/contour_integration/pathfinder_full/curv_contour_length_9/rnd_pf9_10k",
-                    14: "/home/vveeraba/src/pathfinder_full/curv_contour_length_14/val",
-                    16: "/mnt/sphere/projects/contour_integration/pathfinder_full/curv_contour_length_16",
-                    18: "/mnt/sphere/projects/contour_integration/pathfinder_full/curv_contour_length_18/imgs_sample/rnd_pf18_10k"
+    length2data = {6: "<PATH_TO_PATHFINDER_6>",
+                    9: "<PATH_TO_PATHFINDER_9>",
+                    14: "<PATH_TO_PATHFINDER_14>",
+                    16: "<PATH_TO_PATHFINDER_16>",
+                    18: "<PATH_TO_PATHFINDER_18>"
                     }
     criterion = nn.CrossEntropyLoss().cuda()
 
