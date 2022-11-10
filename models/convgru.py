@@ -92,7 +92,8 @@ class ConvGRU(nn.Module):
         -------
         upd_hidden : 5D hidden representation. (layer, batch, channels, height, width).
         '''
-        hidden = torch.zeros_like(input)
+        batch_size, _, height, width = input.size()
+        hidden = torch.zeros(batch_size, self.hidden_size, height, width).to(input.device)
 
         upd_hidden = []
 

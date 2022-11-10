@@ -24,45 +24,34 @@ class DaleRNNcell(nn.Module):
     def __init__(self,
                  in_channels,
                  hidden_dim=None,
+                 divnorm_fsize=5,
                  exc_fsize=7,
                  inh_fsize=5,
                  device='cuda',
                  init_ = None,
-                 use_ln=True,
-                 use_gates=True,
-                 nl='relu',
                  ):
         super(DaleRNNcell, self).__init__()
-        del init_  # unused
         self.in_channels = in_channels
         if hidden_dim is None:
             self.hidden_dim = in_channels
         else:
             self.hidden_dim = hidden_dim
-        self.use_ln = use_ln
-        self.use_gates = use_gates
-        if nl == 'relu':
-            self.act_fn = torch.relu
-        elif nl == 'tanh':
-            self.act_fn = torch.tanh
-        else:
-            raise ValueError('Invalid non-linearity')
-
         # recurrent gates computation
-        
-        self.ln_e_x = self.get_ln()
-        self.ln_e_e = self.get_ln()
-        self.ln_i_x = self.get_ln()
-        self.ln_i_i = self.get_ln()
-        self.ln_out_e = self.get_ln()
-        self.ln_out_i = self.get_ln()
+        self.g_exc_x = nn.Conv2d(self.in_channels, self.hidden_dim, 1)
+        self.ln_e_x = nn.GroupNorm(num_groups=1, num_channels=self.hidden_dim)
+        self.g_exc_e = nn.Conv2d(self.hidden_dim, self.hidden_dim, 1)
+        self.ln_e_e = nn.GroupNorm(num_groups=1, num_channels=self.hidden_dim)
+        self.g_inh_x = nn.Conv2d(self.in_channels, self.hidden_dim, 1)
+        self.ln_i_x = nn.GroupNorm(num_groups=1, num_channels=self.hidden_dim)
+        self.g_inh_i = nn.Conv2d(self.hidden_dim, self.hidden_dim, 1)
+        self.ln_i_i = nn.GroupNorm(num_groups=1, num_channels=self.hidden_dim)
+        self.ln_out_e = nn.GroupNorm(
+            num_groups=1, num_channels=self.hidden_dim)
+        self.ln_out_i = nn.GroupNorm(
+            num_groups=1, num_channels=self.hidden_dim)
 
-        if self.use_gates:
-            self.g_exc_x = nn.Conv2d(self.in_channels, self.hidden_dim, 1)
-            self.g_exc_e = nn.Conv2d(self.hidden_dim, self.hidden_dim, 1)
-            self.g_inh_x = nn.Conv2d(self.in_channels, self.hidden_dim, 1)
-            self.g_inh_i = nn.Conv2d(self.hidden_dim, self.hidden_dim, 1)
-
+        # self.ln_out = nn.GroupNorm(
+        #     num_groups=1, num_channels=self.hidden_dim)
         # feedforward stimulus drive
         self.w_exc_x = nn.Conv2d(self.in_channels, self.hidden_dim, 1)
         self.w_inh_x = nn.Conv2d(self.in_channels, self.hidden_dim, 1)
@@ -71,74 +60,86 @@ class DaleRNNcell(nn.Module):
         self.w_exc_ei = nn.Conv2d(
             self.hidden_dim * 2, self.hidden_dim, exc_fsize, padding=(exc_fsize-1) // 2)
         # disynaptic inhibition with pairs of E-I cells, E -> exciting surround I -> inhibiting surround E
+        # self.w_exc_i = nn.Conv2d(self.hidden_dim, self.hidden_dim, 1)
         self.w_inh_ei = nn.Conv2d(
             self.hidden_dim * 2, self.hidden_dim, inh_fsize, padding=(inh_fsize-1) // 2)
+        # self.w_inh_e = nn.Conv2d(self.hidden_dim, self.hidden_dim, inh_fsize, padding=(inh_fsize-1) // 2)
+        # nonnegative_weights_init(self.div)
 
-    def get_ln(self):
-        if self.use_ln:
-            return nn.GroupNorm(num_groups=1, num_channels=self.hidden_dim)
-        else:
-            return nn.Identity()
+        if init_ == 'ortho':
+            print("initializing RNN weights with Orthogonal Initialization")
+            init.orthogonal(self.g_exc_x.weight)
+            init.orthogonal(self.g_exc_e.weight)
+            init.orthogonal(self.g_inh_x.weight)
+            init.orthogonal(self.g_inh_i.weight)
+
+            init.orthogonal(self.w_exc_x.weight)
+            init.orthogonal(self.w_exc_ei.weight)
+            init.orthogonal(self.w_inh_x.weight)
+            init.orthogonal(self.w_inh_ei.weight)
+
+            init.constant(self.g_exc_x.bias, 0.)
+            init.constant(self.g_exc_e.bias, 0.)
+            init.constant(self.g_inh_x.bias, 0.)
+            init.constant(self.g_inh_i.bias, 0.)
+
+            init.constant(self.w_exc_x.bias, 0.)
+            init.constant(self.w_exc_ei.bias, 0.)
+            init.constant(self.w_inh_x.bias, 0.)
+            init.constant(self.w_inh_ei.bias, 0.)
 
     def forward(self, input, hidden):
+        # TODO (make symmetric horizontal connections)
         exc, inh = hidden
-        if self.use_gates:
-            g_exc = torch.sigmoid(self.ln_e_x(self.g_exc_x(
-                input)) + self.ln_e_e(self.g_exc_e(exc)))
-            g_inh = torch.sigmoid(self.ln_i_x(self.g_inh_x(
-                input)) + self.ln_i_i(self.g_inh_i(inh)))
+        g_exc = torch.sigmoid(self.ln_e_x(self.g_exc_x(
+            input)) + self.ln_e_e(self.g_exc_e(exc)))
+        g_inh = torch.sigmoid(self.ln_i_x(self.g_inh_x(
+            input)) + self.ln_i_i(self.g_inh_i(inh)))
 
-        e_hat_t = self.act_fn(
+        e_hat_t = torch.relu(
             self.w_exc_x(input) +
             self.w_exc_ei(torch.cat((exc, inh), 1)))
 
-        i_hat_t = self.act_fn(
+        i_hat_t = torch.relu(
             self.w_inh_x(input) +
             self.w_inh_ei(torch.cat((exc, inh), 1)))
 
-        if self.use_gates:
-            exc = self.act_fn(self.ln_out_e(g_exc * e_hat_t + (1 - g_exc) * exc))
-            inh = self.act_fn(self.ln_out_i(g_inh * i_hat_t + (1 - g_inh) * inh))
-            return (exc, inh)
-        else:
-            return e_hat_t, i_hat_t
+        exc = torch.relu(self.ln_out_e(g_exc * e_hat_t + (1 - g_exc) * exc))
+        inh = torch.relu(self.ln_out_i(g_inh * i_hat_t + (1 - g_inh) * inh))
+
+        # Add a scalar multiplier to i_hat_t to control sub-contrast regime normalization?
+        return (exc, inh)
 
 
 class DaleRNNLayer(nn.Module):
     def __init__(self,
                  in_channels,
                  hidden_dim=None,
+                 divnorm_fsize=5,
                  exc_fsize=11,
                  inh_fsize=5,
                  timesteps=4,
                  device='cuda',
                  temporal_agg=False,
                  init_=None,
-                 return_all_states=False,
-                 use_ln=True,
-                 use_gates=True,
-                 nl='relu',
                  ):
         super(DaleRNNLayer, self).__init__()
         self.in_channels = in_channels
         self.hidden_dim = hidden_dim
+        self.divnorm_fsize = divnorm_fsize
         self.exc_fsize = exc_fsize
         self.inh_fsize = inh_fsize
         self.timesteps = timesteps
         self.init_ = init_
-        self.return_all_states = return_all_states
         print("%s steps of recurrence" % self.timesteps)
         self.device = device
         self.rnn_cell = DaleRNNcell(in_channels=self.in_channels,
                                     hidden_dim=self.hidden_dim,
+                                    divnorm_fsize=self.divnorm_fsize,
                                     exc_fsize=self.exc_fsize,
                                     inh_fsize=self.inh_fsize,
                                     device=self.device,
-                                    init_=self.init_,
-                                    use_gates=use_gates,
-                                    use_ln=use_ln,
-                                    nl=nl,
-                                    )
+                                    init_=self.init_)
         self.emb_exc = nn.Conv2d(self.in_channels, self.hidden_dim, 1)
         self.emb_inh = nn.Conv2d(self.in_channels, self.hidden_dim, 1)
         if temporal_agg:
@@ -165,6 +166,4 @@ class DaleRNNLayer(nn.Module):
             outputs_e = torch.stack(outputs_e)
             output = torch.einsum('ij,jklmn -> iklmn', t_probs, outputs_e)
             return output[0]
-        if self.return_all_states:
-            return outputs_e
         return outputs_e[-1]

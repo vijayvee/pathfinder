@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from models import resnet as models_resnet
+from models.resnet_pathfinder import *
 from models.dale_rnn import DaleRNNLayer
 from models.hgru import hConvGRU
 from models.convgru import ConvGRU
@@ -25,14 +26,18 @@ class BaseModel(nn.Module):
         self.timesteps = args.timesteps if args.timesteps else self.backbone['timesteps']
         self.num_ori = 32  # max(32, self.backbone['out_channels'])
         if self.name.startswith("dalernn"):
-            self.rnn = DaleRNNLayer( #self.backbone['out_channels'],
-                                    self.num_ori,
-                                    self.backbone['out_channels'],
-                                    # timesteps=self.backbone['timesteps'],
-                                    timesteps=self.timesteps,
-                                    exc_fsize=self.backbone['fsize'],
-                                    init_=self.backbone['init_']
-                                    )
+            self.rnn = DaleRNNLayer(  # self.backbone['out_channels'],
+                self.num_ori,
+                self.backbone['out_channels'],
+                # timesteps=self.backbone['timesteps'],
+                timesteps=self.timesteps,
+                exc_fsize=self.backbone['fsize'],
+                init_=self.backbone['init_'],
+                return_all_states=False,
+                use_ln=self.backbone['use_ln']=='True',
+                use_gates=self.backbone['use_gates']=='True',
+                nl=self.backbone['nl'],
+            )
             self.num_units = self.backbone['out_channels']
 
         elif self.name.startswith("hgru"):
@@ -43,22 +48,22 @@ class BaseModel(nn.Module):
             self.num_units = self.backbone['out_channels']
 
         elif self.name.startswith("gru"):
-            self.rnn = ConvGRU( #self.backbone['out_channels'],
-                               self.num_ori,
-                               self.backbone['out_channels'],
-                               self.backbone['fsize'],
-                               self.backbone['timesteps'])
+            self.rnn = ConvGRU(  # self.backbone['out_channels'],
+                self.num_ori,
+                self.backbone['out_channels'],
+                self.backbone['fsize'],
+                self.backbone['timesteps'])
 
             self.num_units = self.backbone['out_channels']
-        
+
         elif self.name.startswith("extrnn"):
-            self.rnn = ExtRNNLayer( #self.backbone['out_channels'],
-                                    self.num_ori,
-                                    self.backbone['out_channels'],
-                                    timesteps=self.timesteps,
-                                    exc_fsize=self.backbone['fsize'],
-                                    init_=self.backbone['init_']
-                                    )
+            self.rnn = ExtRNNLayer(  # self.backbone['out_channels'],
+                self.num_ori,
+                self.backbone['out_channels'],
+                timesteps=self.timesteps,
+                exc_fsize=self.backbone['fsize'],
+                init_=self.backbone['init_']
+            )
             self.num_units = self.backbone['out_channels']
 
         if self.name.startswith('ff'):
@@ -85,7 +90,7 @@ class BaseModel(nn.Module):
                 in_channels = self.backbone['out_channels']
             self.backbone = nn.Sequential(*backbone)
 
-        elif self.name == 'dalernn' or self.name == 'hgru' or self.name == 'gru' or self.name == 'extrnn':
+        elif self.name.startswith('dalernn') or self.name == 'hgru' or self.name == 'gru' or self.name == 'extrnn':
             self.backbone = nn.Sequential(
                 get_gabor_conv(3, self.num_ori,
                                f_size=11, stride=2),
@@ -101,6 +106,18 @@ class BaseModel(nn.Module):
             pass
         elif self.name == 'ln_ff':
             pass
+        elif self.name.startswith('resnet_thin_pathfinder'):
+            if self.nlayers == 10:
+                self.backbone = resnet10_thin_pathfinder(inplanes=self.backbone['out_channels'],
+                                                         pretrained=False,
+                                                         num_classes=self.num_classes)
+            elif self.nlayers == 18:
+                self.backbone = resnet18_thin_pathfinder(inplanes=self.backbone['out_channels'],
+                                                         pretrained=False,
+                                                         num_classes=self.num_classes)
+            else:
+                raise NotImplementedError("Only 10 and 18 layers are implemented for %s" % self.name)
+            self.num_units = self.backbone.out_dim
         elif self.name.startswith('resnet_thin'):
             self.backbone = models_resnet.__dict__['resnet%s_thin' % self.nlayers](inplanes=self.backbone['out_channels'],
                                                                                    pretrained=False,
@@ -108,11 +125,23 @@ class BaseModel(nn.Module):
             self.num_units = self.backbone.out_dim
         elif self.name.startswith('resnet'):
             self.backbone = models_resnet.__dict__['resnet%s' % self.nlayers](inplanes=self.backbone['out_channels'],
-                                                                                pretrained=False,
-                                                                                num_classes=self.num_classes)
+                                                                              pretrained=False,
+                                                                              num_classes=self.num_classes)
             self.num_units = self.backbone.out_dim
         elif self.name == 'r_resnet':
             pass
+        elif self.name == 'transformer':
+            from vit_pytorch import ViT
+            self.backbone = ViT(image_size=160,
+                                patch_size=8,
+                                num_classes=2,
+                                dim=512,
+                                depth=6,
+                                heads=8,
+                                mlp_dim=512,
+                                dropout=0.1,
+                                emb_dropout=0.1
+                                )
         else:
             raise NotImplementedError(self.backbone)
         self.final_conv = nn.Conv2d(self.num_units, 2, 1)
@@ -123,18 +152,24 @@ class BaseModel(nn.Module):
         if self.name.startswith('resnet'):
             x = self.backbone.get_intermediate_layers(
                 x, n=1)  # retrieve post-avg-pool output
+        # elif self.name.startswith('dalernn'):
+        #     # all_outputs = self.backbone(x)
+        #     # x = all_outputs[-1]
         else:
+            all_outputs = None
             x = self.backbone(x)
         self.rnn_out = x
         x = self.final_conv(x)
         x = self.final_pool(x)
         x = torch.flatten(x, 1)
         x = self.readout(x)
+        if all_outputs:
+            return x, all_outputs
         return x
 
     def get_intermediate_layers(self, x, n):
         """Get the n'th layer"""
-        if self.name.startswith('resnet'):
+        if self.name.startswith('resnet') and self.name.count('pathfinder') == 0:
             x = self.backbone.get_intermediate_layers(
                 x, n=1)  # retrieve post-avg-pool output
         else:

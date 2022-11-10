@@ -133,8 +133,11 @@ class hConvGRUCell(nn.Module):
     def forward(self, input_, prev_state2, timestep=0):
 
         if timestep == 0:
+            # batch_size, _, height, width = input_.size()
+            # tmp_hidden = torch.zeros(batch_size, self.hidden_size, height, width, device=input_.device)
             prev_state2 = torch.empty_like(input_)
             init.xavier_normal_(prev_state2)
+            
 
         #import pdb; pdb.set_trace()
         i = timestep
