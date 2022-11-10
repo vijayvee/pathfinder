@@ -27,17 +27,10 @@ from models.model_builder import BaseModel
 parser = argparse.ArgumentParser(description='Pathfinder zeroshot evaluation')
 parser.add_argument('-test-length', '--test-length', default=9, type=int, metavar='N',
                     help='length of test paths (default: 9)')
-parser.add_argument('-cfg', '--cfg-file', metavar='CFG', default=None)
-parser.add_argument('-nl', '--nlayers', default=-1, type=int, metavar='N',
-                    help='Number of layers in backbone feature extractor')
-parser.add_argument('--timesteps', default=0, type=int, metavar='N',
-                    help='number of recurrent timesteps')
-parser.add_argument('--eval-all', default=False, type=bool,
-                    help='Evaluate all lengths')
-parser.add_argument('--resume', default='', type=str, metavar='PATH',
-                    help='path to latest checkpoint (default: none)')
+parser.add_argument('-eval-single', '--eval-single', action='store_true')
 
-
+checkpoints = {"dalernn-t-12": "ckpt_iclr/curv_contour_length_14/dalernn/dalernn3_test_pf14_dalernn_ts12_fsize9_skpewc_seed_10/pathfinder_checkpoint_best_dalernn.pth"}
+root_dir = Path("/home/vveeraba/src/pathfinder")
 def accuracy(output, target, topk=(1,)):
     """Computes the accuracy over the k top predictions for the specified values of k"""
     with torch.no_grad():
@@ -142,8 +135,8 @@ class Config():
         pass
 
 
-def load_cfg(args):
-    with open("configs/%s" % args.cfg_file) as f:
+def load_cfg(cfg_file):
+    with open("configs/%s" % cfg_file) as f:
         cfg = f.read()
     cfg = eval(cfg)
     return cfg
@@ -164,48 +157,68 @@ def create_config(cfg):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    args.cfg = load_cfg(args)
-    args.cfg['nlayers'] = args.nlayers
-    args.cfg['in_res'] = 160
+    global_stats_file = open(root_dir / 'eval_zeroshot_dale_stats_timestep10.txt', 'a', buffering=1)
+    cfgs = [("dalernn-t-12", 3)]
+    # inf_timesteps = [6, 7, 8, 9, 11, 12, 13, 14, 15]
+    inf_timesteps = [10]
+    # results = {length: {model: {time: 0 for time in inf_timesteps} for model, _ in cfgs} for length in [6, 9, 14, 16, 18]}
+    # evaluating just 10 timesteps model for figure
+    results = {length: {model: {time: 0 for time in inf_timesteps} for model, _ in cfgs} for length in [9, 14, 18]}
+
     length2data = {6: "/mnt/sphere/projects/contour_integration/pathfinder_full/curv_baseline/rnd_pf6_20k",
-                   9: "/mnt/sphere/projects/contour_integration/pathfinder_full/curv_contour_length_9/rnd_pf9_10k",
-                   14: "/home/vveeraba/src/pathfinder_full/curv_contour_length_14/val",
-                   16: "/mnt/sphere/projects/contour_integration/pathfinder_full/curv_contour_length_16",
-                   18: "/mnt/sphere/projects/contour_integration/pathfinder_full/curv_contour_length_18/imgs_sample/rnd_pf18_10k"
-                   }
+                    9: "/mnt/sphere/projects/contour_integration/pathfinder_full/curv_contour_length_9/rnd_pf9_10k",
+                    16: "/mnt/sphere/projects/contour_integration/pathfinder_full/curv_contour_length_16",
+                    18: "/mnt/sphere/projects/contour_integration/pathfinder_full/curv_contour_length_18/imgs_sample/rnd_pf18_10k",
+                    14: "/home/vveeraba/src/pathfinder_full/curv_contour_length_14/val",
+                    }
+    criterion = nn.CrossEntropyLoss().cuda()
 
-    dale_timesteps = {6: 7, 9: 8, 14: 12, 16: 13, 18: 14}
-
-    if args.eval_all:
-        cfgs = [('dalernn-t-12', 3), ('resnet_thin', 18), ('resnet', 18)]
-        lengths = [6, 9, 14, 16, 18]
+    if args.eval_single:
+            lengths = [args.test_length]
     else:
-        lengths = [args.test_length]
-
+        # lengths = [6, 9, 16, 18, 14]
+        lengths = [9, 14, 18]
+    
     for length in lengths:
-        args.valdir = length2data[length]
-        with torch.no_grad():
-            train_data = args.resume.split('curv_')[-1].split('/')[0]
-            print("Train dataset: %s" % train_data)
-            cfg = create_config(args.cfg)
-            cfg.in_res = 160
-
-            model = BaseModel(cfg, args)
-            model.eval()
-            model.cuda()
-
-            # Load checkpoints for trained model
-            ckpt = torch.load(args.resume, map_location='cuda:0')
-            model.load_state_dict(ckpt['model'])
-
-            print("Eval on PF%s" % length)
-
-            val_loader = torch.utils.data.DataLoader(
-                datasets.ImageFolder(args.valdir, transforms.Compose([
+        valdir = length2data[length]
+        val_loader = torch.utils.data.DataLoader(
+                datasets.ImageFolder(valdir, transforms.Compose([
                     transforms.Resize(160),
                     transforms.ToTensor(),
                 ])),
                 batch_size=1024, shuffle=False,
                 num_workers=4, pin_memory=True)
-            criterion = nn.CrossEntropyLoss().cuda()
-            validate(val_loader, model, criterion)
+        cfg_name, cfg_depth = cfgs[0]
+        for timestep in inf_timesteps:
+            args.cfg = load_cfg(cfg_name)
+            args.cfg['nlayers'] = cfg_depth
+            args.cfg['in_res'] = 160
+            args.resume = checkpoints[cfg_name]
+            args.timesteps = timestep
+            with torch.no_grad():
+                cfg = create_config(args.cfg)
+                
+                model = BaseModel(cfg, args)
+                model.eval()
+                model.cuda()
+
+                # Load checkpoints for trained model
+                ckpt = torch.load(args.resume, map_location='cuda:0')
+                model.load_state_dict(ckpt['model'])
+                print("Loaded checkpoint from %s" % args.resume)
+
+                acc1, _ = validate(val_loader, model, criterion)
+                results[length][cfg_name][timestep] = acc1.item()
+                print(results)
+                print(results, file=global_stats_file)
+
+
+
+    
+        
+
+        
+
+        
+            
+            
