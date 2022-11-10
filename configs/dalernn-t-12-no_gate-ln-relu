@@ -2,16 +2,19 @@
     'backbone':
         [
             {
-                'rnn_layer': 'extrnn',
+                'rnn_layer': 'dalernn',
                 'conv_init': 'gabor',
                 'fsize': 7,
                 'stride': 2,
-                'out_channels': 32,
+                'out_channels': 24,
                 'timesteps': 12,
                 'init_': 'None',
+                'use_gates': 'False',
+                'use_ln': 'True',
+                'nl': 'relu',
             },
         ],
-    'name': 'extrnn',
+    'name': 'dalernn_nogate_ln_relu',
     'num_classes': 2,
     'nlayers': -1,
 }

@@ -382,8 +382,8 @@ def main_worker(gpu, ngpus_per_node, args):
                              optimizer=optimizer.state_dict(), val_acc1=val_acc1.item())
                 torch.save(state, '%s/pathfinder_checkpoint_best_%s.pth' %
                            (args.checkpoint_dir, str(args.model_name)))
-                # if val_acc1.item() > 90:
-                #     return
+                if val_acc1.item() > 90:
+                    return
 
 
 def train(train_loader, model, criterion, optimizer, epoch, args):

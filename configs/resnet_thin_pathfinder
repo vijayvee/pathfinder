@@ -1,0 +1,15 @@
+{
+    'backbone':
+        [
+            {
+                'conv_init': None,
+                'layer': 'resnet_pathfinder',
+                'output_layer': 'res4',
+                'out_channels': 54,
+                'timesteps': 0,
+                },
+        ],
+    'name': 'resnet_thin_pathfinder',
+    'num_classes': 2,
+    'nlayers': 18,
+}

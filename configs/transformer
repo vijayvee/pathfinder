@@ -1,0 +1,12 @@
+{
+    'backbone':
+        [
+            {
+                'out_channels': 32,
+
+            },
+        ],
+    'name': 'transformer',
+    'num_classes': 2,
+    'nlayers': 6,
+}
