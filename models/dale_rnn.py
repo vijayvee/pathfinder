@@ -45,6 +45,8 @@ class DaleRNNcell(nn.Module):
             self.act_fn = torch.relu
         elif nl == 'tanh':
             self.act_fn = torch.tanh
+        elif nl == 'clipped_relu':
+            self.act_fn = nn.ReLU6()
         else:
             raise ValueError('Invalid non-linearity')
 

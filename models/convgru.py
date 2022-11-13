@@ -14,7 +14,7 @@ class ConvGRUCell(nn.Module):
     Generate a convolutional GRU cell
     """
 
-    def __init__(self, input_size, hidden_size, kernel_size):
+    def __init__(self, input_size, hidden_size, kernel_size, act_fn):
         super().__init__()
         padding = kernel_size // 2
         self.input_size = input_size
@@ -22,6 +22,7 @@ class ConvGRUCell(nn.Module):
         self.reset_gate = nn.Conv2d(input_size + hidden_size, hidden_size, kernel_size, padding=padding)
         self.update_gate = nn.Conv2d(input_size + hidden_size, hidden_size, kernel_size, padding=padding)
         self.out_gate = nn.Conv2d(input_size + hidden_size, hidden_size, kernel_size, padding=padding)
+        self.act_fn = act_fn
 
         init.orthogonal(self.reset_gate.weight)
         init.orthogonal(self.update_gate.weight)
@@ -49,7 +50,7 @@ class ConvGRUCell(nn.Module):
         stacked_inputs = torch.cat([input_, prev_state], dim=1)
         update = F.sigmoid(self.update_gate(stacked_inputs))
         reset = F.sigmoid(self.reset_gate(stacked_inputs))
-        out_inputs = F.tanh(self.out_gate(torch.cat([input_, prev_state * reset], dim=1)))
+        out_inputs = self.act_fn(self.out_gate(torch.cat([input_, prev_state * reset], dim=1)))
         new_state = prev_state * (1 - update) + out_inputs * update
 
         return new_state
@@ -57,7 +58,9 @@ class ConvGRUCell(nn.Module):
 
 class ConvGRU(nn.Module):
 
-    def __init__(self, input_size, hidden_size, kernel_size, timesteps):
+    def __init__(self, input_size, hidden_size, 
+                    kernel_size, timesteps,
+                    nl='tanh'):
         '''
         Generates a multi-layer convolutional GRU.
         Preserves spatial dimensions across cells, only altering depth.
@@ -78,8 +81,13 @@ class ConvGRU(nn.Module):
         self.hidden_size = hidden_size
         self.kernel_size = kernel_size
         self.timesteps = timesteps
-
-        self.cell = ConvGRUCell(self.input_size, self.hidden_size, self.kernel_size)
+        if nl == 'tanh':
+            self.act_fn = nn.Tanh()
+        elif nl == 'relu':
+            self.act_fn = nn.ReLU()
+        else:
+            raise ValueError('Unknown non-linearity')
+        self.cell = ConvGRUCell(self.input_size, self.hidden_size, self.kernel_size, self.act_fn)
 
     def forward(self, input):
         '''
