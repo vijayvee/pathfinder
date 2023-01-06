@@ -39,7 +39,7 @@ class ConvRNNcell(nn.Module):
             raise ValueError('Invalid non-linearity')
 
         # recurrent gates computation
-        self.w_ch = nn.Conv2d(self.hidden_dim, self.hidden_dim, 1)
+        self.w_ch = nn.Conv2d(self.hidden_dim, self.hidden_dim, self.fsize, padding=self.fsize//2)
         self.w_cc = nn.Conv2d(self.hidden_dim, self.hidden_dim, 1)
         self.w_hh = nn.Conv2d(self.hidden_dim, self.hidden_dim, self.fsize, padding=self.fsize//2)
         self.w_hc = nn.Conv2d(self.hidden_dim, self.hidden_dim, 1)

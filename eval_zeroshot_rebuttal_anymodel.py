@@ -30,7 +30,11 @@ parser.add_argument('-test-length', '--test-length', default=9, type=int, metava
 parser.add_argument('-eval-single', '--eval-single', action='store_true')
 
 checkpoints = {"dalernn-t-12": "ckpt_iclr/curv_contour_length_14/dalernn/dalernn3_test_pf14_dalernn_ts12_fsize9_skpewc_seed_10/pathfinder_checkpoint_best_dalernn.pth",
-                "dalernn-t-12-gate-ln-clippedrelu": "ckpt_iclr/curv_contour_length_14/dalernn_gate_ln_clipped_relu/pf14_channels32_fsize7_gonpmi_seed_10/pathfinder_checkpoint_best_dalernn_gate_ln_clipped_relu.pth"}
+                "dalernn-t-12-gate-ln-clippedrelu": "ckpt_iclr/curv_contour_length_14/dalernn_gate_ln_clipped_relu/pf14_channels32_fsize7_gonpmi_seed_10/pathfinder_checkpoint_best_dalernn_gate_ln_clipped_relu.pth",
+                "cornets-relu": "ckpt_iclr/curv_contour_length_14/cornets_relu/pf14_channels20_fsize7_qxxgjc_seed_56/pathfinder_checkpoint_best_cornets_relu.pth",
+                "gru-relu": "ckpt_iclr/curv_contour_length_14/gru_relu/pf14_channels24_fsize7_sgsizw_seed_10/pathfinder_checkpoint_best_gru_relu.pth"
+                }
+
 root_dir = Path("/home/vveeraba/src/pathfinder")
 
 def accuracy(output, target, topk=(1,)):
@@ -159,11 +163,13 @@ def create_config(cfg):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    global_stats_file = open(root_dir / 'eval_zeroshot_dale_stats_timestep10.txt', 'a', buffering=1)
+    cfgs = [("cornets-relu", 3)]
+    filename = 'eval_zeroshot_%s_stats_timestep10.txt' % cfgs[0][0]
+    global_stats_file = open(root_dir / Path(filename), 'a', buffering=1)
     # cfgs = [("dalernn-t-12", 3)]
-    cfgs = [("dalernn-t-12-gate-ln-clippedrelu", 3)]
-    # inf_timesteps = [6, 7, 8, 9, 11, 12, 13, 14, 15]
-    inf_timesteps = [13, 14]
+    # cfgs = [("dalernn-t-12-gate-ln-clippedrelu", 3)]
+    inf_timesteps = [7, 8, 9, 10, 11, 12, 13, 14, 15, 17]
+    # inf_timesteps = [13, 14]
     # inf_timesteps = [12, 13, 14, 15, 20]
     # results = {length: {model: {time: 0 for time in inf_timesteps} for model, _ in cfgs} for length in [6, 9, 14, 16, 18]}
     # evaluating just 10 timesteps model for figure
@@ -203,18 +209,21 @@ if __name__ == "__main__":
             args.timesteps = timestep
             with torch.no_grad():
                 cfg = create_config(args.cfg)
-                
+                print("args timesteps: ", args.timesteps)
                 model = BaseModel(cfg, args)
                 model.eval()
                 model.cuda()
 
                 # Load checkpoints for trained model
                 ckpt = torch.load(args.resume, map_location='cuda:0')
-                model.load_state_dict(ckpt['model'])
+                if "cornets" in cfgs[0][0]:
+                    model.load_state_dict(ckpt['model'], strict=False)
+                else:
+                    model.load_state_dict(ckpt['model'])
                 print("Loaded checkpoint from %s" % args.resume)
 
                 acc1, _ = validate(val_loader, model, criterion)
-                results[length][cfg_name][timestep] = acc1.item()
+                results[length][cfg_name][timestep] = "%.2f" % (acc1.item())
                 print(results)
                 print(results, file=global_stats_file)
 

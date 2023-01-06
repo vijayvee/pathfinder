@@ -104,7 +104,7 @@ class ConvGRU(nn.Module):
         hidden = torch.zeros(batch_size, self.hidden_size, height, width).to(input.device)
 
         upd_hidden = []
-
+        print(self.timesteps, "timesteps")
         for _ in range(self.timesteps):
             # pass through layer
             hidden = self.cell(input, hidden)

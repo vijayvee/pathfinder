@@ -11,8 +11,9 @@ from models.dale_rnn import DaleRNNLayer
 from models.hgru import hConvGRU
 from models.convgru import ConvGRU
 from models.ext_rnn import ExtRNNLayer
+from models.convrnn import ConvRNNLayer
+from models.cornets import CORblock_S
 from models.utils import get_gabor_conv
-
 
 class BaseModel(nn.Module):
     def __init__(self, cfg, args):
@@ -26,6 +27,9 @@ class BaseModel(nn.Module):
         self.timesteps = args.timesteps if args.timesteps else self.backbone['timesteps']
         self.num_ori = 32  # max(32, self.backbone['out_channels'])
         if self.name.startswith("dalernn"):
+            interneuron = True
+            if "abl_interneuron" in self.name:
+                interneuron = False
             self.rnn = DaleRNNLayer(  # self.backbone['out_channels'],
                 self.num_ori,
                 self.backbone['out_channels'],
@@ -37,7 +41,11 @@ class BaseModel(nn.Module):
                 use_ln=self.backbone['use_ln']=='True',
                 use_gates=self.backbone['use_gates']=='True',
                 nl=self.backbone['nl'],
+                interneuron=interneuron,
             )
+            # if "abl_interneuron" in self.name:
+            #     self.num_units = self.backbone['out_channels'] * 2
+            # else:
             self.num_units = self.backbone['out_channels']
 
         elif self.name.startswith("hgru"):
@@ -52,7 +60,8 @@ class BaseModel(nn.Module):
                 self.num_ori,
                 self.backbone['out_channels'],
                 self.backbone['fsize'],
-                self.backbone['timesteps'])
+                self.timesteps,
+                self.backbone['nl'],)
 
             self.num_units = self.backbone['out_channels']
 
@@ -65,6 +74,25 @@ class BaseModel(nn.Module):
                 init_=self.backbone['init_']
             )
             self.num_units = self.backbone['out_channels']
+        
+        elif self.name.startswith("convrnn"):
+            self.rnn = ConvRNNLayer(  # self.backbone['out_channels'],
+                self.num_ori,
+                self.backbone['out_channels'],
+                fsize=self.backbone['fsize'],
+                timesteps=self.timesteps,
+                nl=self.backbone['nl'],
+            )
+            self.num_units = self.backbone['out_channels']
+        elif self.name.startswith("cornets"):
+            self.rnn = CORblock_S(self.num_ori, 
+                                  self.backbone['out_channels'],
+                                  fsize=self.backbone['fsize'],
+                                  times=self.timesteps,
+                                  )
+            self.num_units = self.backbone['out_channels']
+        else:
+            self.rnn = None
 
         if self.name.startswith('ff'):
             backbone = []
@@ -90,7 +118,8 @@ class BaseModel(nn.Module):
                 in_channels = self.backbone['out_channels']
             self.backbone = nn.Sequential(*backbone)
 
-        elif self.name.startswith('dalernn') or self.name == 'hgru' or self.name == 'gru' or self.name == 'extrnn':
+        # elif self.name.startswith('dalernn') or self.name == 'hgru' or self.name.startswith('gru') or self.name == 'extrnn':
+        elif self.rnn:
             self.backbone = nn.Sequential(
                 get_gabor_conv(3, self.num_ori,
                                f_size=11, stride=2),

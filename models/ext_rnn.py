@@ -92,8 +92,8 @@ class ExtRNNLayer(nn.Module):
                                    hidden_dim=self.hidden_dim,
                                    exc_fsize=self.exc_fsize,
                                    init_=self.init_)
-        self.emb_exc = nn.Conv2d(self.in_channels, self.hidden_dim, 1)
-        self.emb_inh = nn.Conv2d(self.in_channels, self.hidden_dim, 1)
+        # self.emb_exc = nn.Conv2d(self.in_channels, self.hidden_dim, 1)
+        # self.emb_inh = nn.Conv2d(self.in_channels, self.hidden_dim, 1)
         if temporal_agg:
             self.temporal_agg = nn.Parameter(torch.ones([1, self.timesteps]))
         else:
@@ -102,9 +102,8 @@ class ExtRNNLayer(nn.Module):
     def forward(self, input):
         outputs_e = []
         n_x, _, w_x, h_x = input.shape
-        # state = (self.emb_exc(input), self.emb_inh(input))
-        # state = (torch.zeros_like(input), torch.zeros_like(input))
         state = torch.zeros(n_x, self.hidden_dim, w_x, h_x)
+        # self.ablate_interneuron = nn.Conv2d(self.hidden_dim*2, self.hidden_dim, 1)
         if torch.cuda.is_available():
             state = state.cuda()
         for _ in range(self.timesteps):
@@ -115,4 +114,5 @@ class ExtRNNLayer(nn.Module):
             outputs_e = torch.stack(outputs_e)
             output = torch.einsum('ij,jklmn -> iklmn', t_probs, outputs_e)
             return output[0]
+        # return self.ablate_interneuron(outputs)
         return outputs_e[-1]

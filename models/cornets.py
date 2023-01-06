@@ -17,7 +17,7 @@ class CORblock_S(nn.Module):
 
         self.conv_input = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False)
         self.skip = nn.Conv2d(out_channels, out_channels,
-                              kernel_size=1, stride=2, bias=False)
+                              kernel_size=1, stride=1, bias=False)
         self.norm_skip = nn.BatchNorm2d(out_channels)
 
         self.conv1 = nn.Conv2d(out_channels, out_channels * self.scale,
@@ -46,7 +46,7 @@ class CORblock_S(nn.Module):
         for t in range(self.times):
             if t == 0:
                 skip = self.norm_skip(self.skip(x))
-                self.conv2.stride = (2, 2)
+                self.conv2.stride = (1, 1)
             else:
                 skip = x
                 self.conv2.stride = (1, 1)

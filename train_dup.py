@@ -44,10 +44,10 @@ parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
 parser.add_argument('-in-res', '--in-res', default=160, type=int, metavar='N',
                     help='default input image resolution')
+# parser.add_argument('-timesteps', '--timesteps', default=0, type=int, metavar='N',
+#                     help='recurrent model timesteps')
 parser.add_argument('--epochs', default=90, type=int, metavar='N',
                     help='number of total epochs to run')
-parser.add_argument('--timesteps', default=0, type=int, metavar='N',
-                    help='number of recurrent timesteps')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
 parser.add_argument('-b', '--batch-size', default=1024, type=int,
@@ -133,12 +133,24 @@ def main():
     args.cfg = load_cfg(args)
     args.cfg['nlayers'] = args.nlayers
     args.cfg['in_res'] = args.in_res
+    if 'timesteps' not in args.cfg['backbone'][0].keys():
+        timesteps = 0
+    else:
+        timesteps = args.cfg['backbone'][0]['timesteps']
     while True:
-        checkpoint_dir = Path("ckpt_iclr/%s/%s/%s_%s_seed_%s" % (args.data.strip("/").split("/")[-1],
-                                                           args.cfg['name'],
-                                                           args.expname,
-                                                           generate_rand_string(6),
-                                                           args.seed))
+        out_dir = 'ckpt_iclr'
+        if 'ablation' in args.expname:
+            out_dir = 'ablation_iclr'
+        checkpoint_dir = Path("%s/%s/%s/%s_%s_%s_seed_%s" % (out_dir,
+                                                             args.data.split(
+                                                                 "/")[-1],
+                                                             args.cfg['name'],
+                                                             "timesteps_" +
+                                                             str(timesteps),
+                                                             args.expname,
+                                                             generate_rand_string(
+                                                                 6),
+                                                             args.seed))
         if not os.path.exists(checkpoint_dir):
             args.checkpoint_dir = checkpoint_dir
             break
@@ -205,7 +217,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
     print("=> creating model '{}'".format(args.cfg['name']))
     args.cfg = create_config(args.cfg)
-    model = BaseModel(args.cfg, args)
+    model = BaseModel(args.cfg)
     model_name = args.cfg.name  # + str(args.cfg.nlayers)
     args.model_name = model_name
 
@@ -214,8 +226,6 @@ def main_worker(gpu, ngpus_per_node, args):
         print("# params (%s): " % args.model_name, sum(params))
         print("# params (%s): " % args.model_name,
               sum(params), file=global_stats_file)
-        print(model)
-        print(model, file=global_stats_file)
 
     if not torch.cuda.is_available():
         print('using CPU, this will be slow')
@@ -243,7 +253,6 @@ def main_worker(gpu, ngpus_per_node, args):
         print("Set to GPU", args.gpu)
     else:
         # DataParallel will divide and allocate batch_size to all available GPUs
-        
         if args.model_name.startswith('alexnet') or args.model_name.startswith('vgg'):
             model.features = torch.nn.DataParallel(model.features)
             print("Dataparallel enabled")
@@ -281,7 +290,6 @@ def main_worker(gpu, ngpus_per_node, args):
                   .format(args.resume, checkpoint['epoch']))
         else:
             print("=> no checkpoint found at '{}'".format(args.resume))
-
 
     # Data loading code
     traindir = os.path.join(args.data, 'train')
@@ -383,7 +391,8 @@ def main_worker(gpu, ngpus_per_node, args):
                              optimizer=optimizer.state_dict(), val_acc1=val_acc1.item())
                 torch.save(state, '%s/pathfinder_checkpoint_best_%s.pth' %
                            (args.checkpoint_dir, str(args.model_name)))
-                if val_acc1.item() > 90:
+                if val_acc1 > 90:
+                    print("Returning, model completed training")
                     return
 
 
@@ -404,6 +413,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
 
     # Creates once at the beginning of training
     scaler = torch.cuda.amp.GradScaler()
+
     for i, (images, target) in enumerate(train_loader):
         # measure data loading time
         data_time.update(time.time() - end)
@@ -411,8 +421,9 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         # adjust_learning_rate_cosine(args, optimizer, train_loader, i + epoch * len(train_loader))
         adjust_learning_rate(optimizer, epoch, args)
 
-        if torch.cuda.is_available():
+        if args.gpu is not None:
             images = images.cuda(args.gpu, non_blocking=True)
+        if torch.cuda.is_available():
             target = target.cuda(args.gpu, non_blocking=True)
 
         if i + epoch == 0:
