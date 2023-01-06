@@ -6,7 +6,7 @@
                 'conv_init': 'gabor',
                 'fsize': 9,
                 'stride': 2,
-                'out_channels': 32,
+                'out_channels': 24,
                 'timesteps': 12,
             },
         ],
