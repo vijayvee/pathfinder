@@ -9,6 +9,7 @@ import warnings
 import math
 import numpy as np
 import json
+import pdb
 
 import torch
 from pathlib import Path
@@ -21,7 +22,7 @@ import torch.multiprocessing as mp
 import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.transforms as transforms
-import torchvision.datasets as datasets
+import data as datasets
 import torchvision.models as models
 import torchvision.transforms.functional as F
 
@@ -37,6 +38,14 @@ model_names = sorted(name for name in models.__dict__
 parser = argparse.ArgumentParser(description='Pathfinder Training')
 parser.add_argument('data', metavar='DIR',
                     help='path to dataset')
+
+#Srini adding these arguments for debugging entropy thresholding experiment
+parser.add_argument('--doEntropyThresholding', type=int, default=0)
+parser.add_argument('--returnValidOutput', type=int, default=0)
+#Srini adding these arguments for Adaptive Computation Time
+parser.add_argument('--tau', type=float, default=0.1)
+parser.add_argument('--useACT', type=int, default=1)
+
 parser.add_argument('-cfg', '--cfg-file', metavar='CFG', default=None)
 parser.add_argument('-nl', '--nlayers', default=-1, type=int, metavar='N',
                     help='Number of layers in backbone feature extractor')
@@ -209,6 +218,10 @@ def main_worker(gpu, ngpus_per_node, args):
     model_name = args.cfg.name  # + str(args.cfg.nlayers)
     args.model_name = model_name
 
+    # Print the number of trainable parameters in the model
+    num_trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print("Number of trainable parameters: {}".format(num_trainable_params))
+
     if args.rank == 0:
         params = [np.product(v.shape) for v in model.parameters()]
         print("# params (%s): " % args.model_name, sum(params))
@@ -340,6 +353,7 @@ def main_worker(gpu, ngpus_per_node, args):
         # train for one epoch
         print("Starting epoch %s" % epoch)
         acc1 = train(train_loader, model, criterion, optimizer, epoch, args)
+        # pdb.set_trace()
         val_acc1, _ = validate(
             val_loader, model, criterion, optimizer, epoch, args)
         # remember best acc@1 and save checkpoint
@@ -383,11 +397,13 @@ def main_worker(gpu, ngpus_per_node, args):
                              optimizer=optimizer.state_dict(), val_acc1=val_acc1.item())
                 torch.save(state, '%s/pathfinder_checkpoint_best_%s.pth' %
                            (args.checkpoint_dir, str(args.model_name)))
-                if val_acc1.item() > 90:
-                    return
+                # if val_acc1.item() > 90:
+                #     return
 
 
 def train(train_loader, model, criterion, optimizer, epoch, args):
+    
+    # pdb.set_trace()
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
@@ -415,18 +431,28 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
             images = images.cuda(args.gpu, non_blocking=True)
             target = target.cuda(args.gpu, non_blocking=True)
 
-        if i + epoch == 0:
-            flops = FlopCountAnalysis(model, images)
-            print("Number of flops:", float(flops.total())/1e9, "GFLOPS")
-            print("Module wise flops:")
-            print(flops.by_module())
-            print("Number of flops: %s" % flops, file=args.global_stats_file)
+        # if i + epoch == 0:
+        #     flops = FlopCountAnalysis(model, images)
+        #     print("Number of flops:", float(flops.total())/1e9, "GFLOPS")
+        #     print("Module wise flops:")
+        #     print(flops.by_module())
+        #     print("Number of flops: %s" % flops, file=args.global_stats_file)
 
         # Casts operations to mixed precision
         optimizer.zero_grad()
         with torch.cuda.amp.autocast():
-            output = model(images)
-            loss = criterion(output, target)
+            output = model(images, returnOutput=args.returnValidOutput)
+            if args.useACT:
+                if args.returnValidOutput:
+                    output, full_output, halt_probs, ponder_cost = output
+                else:
+                    output, ponder_cost, halt_probs = output
+                loss = criterion(output, target) + args.tau * ponder_cost
+            elif args.cfg.name.startswith('sgru'):
+                output, ponder_cost = output
+                loss = criterion(output, target) + args.tau * ponder_cost
+            else:
+                loss = criterion(output, target)
             # RELEASE below lines for no nan loss training
             # loss = criterion(output.float(), target)
 
@@ -466,16 +492,24 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         # measure elapsed time
         batch_time.update(time.time() - end)
         end = time.time()
-
+        
         if i % args.print_freq == 0:
             if args.rank == 0:
                 # print(model.rnn_out.min().item(), model.rnn_out.max().item())
-                stats = dict(epoch=epoch, step=i,
-                             lr_weights=optimizer.param_groups[0]['lr'],
-                             loss=loss.item(),
-                             acc1=acc1.item())
+                if args.useACT:
+                    stats = dict(epoch=epoch, step=i,
+                                lr_weights=optimizer.param_groups[0]['lr'],
+                                loss=loss.item(),
+                                acc1=acc1.item(),
+                                probs=halt_probs[0].detach().cpu().tolist())
+                else:
+                    stats = dict(epoch=epoch, step=i,
+                                lr_weights=optimizer.param_groups[0]['lr'],
+                                loss=loss.item(),
+                                acc1=acc1.item())
                 print(json.dumps(stats))
                 print(json.dumps(stats), file=args.global_stats_file)
+
     return top1.avg
 
 
@@ -492,14 +526,32 @@ def validate(val_loader, model, criterion, optimizer, epoch, args):
     model.eval()
     with torch.no_grad():
         end = time.time()
+        extended_outputs = []
         for i, (images, target) in enumerate(val_loader):
             if args.gpu is not None:
                 images = images.cuda(args.gpu, non_blocking=True)
             if torch.cuda.is_available():
                 target = target.cuda(args.gpu, non_blocking=True)
 
-            output = model(images)
-            loss = criterion(output, target)
+            output = model(images, 
+                            doEntropyThresholding=args.doEntropyThresholding, 
+                            returnOutput=args.returnValidOutput)
+            if args.useACT:
+                if args.returnValidOutput:
+                    output, full_output, halt_probs, ponder_cost = output
+                    extended_outputs.append((output.detach().cpu(), full_output.detach().cpu(), halt_probs.detach().cpu(), ponder_cost.detach().cpu(), target.detach().cpu()))
+                else:
+                    output, ponder_cost, halt_probs = output
+                    extended_outputs.append((output.detach().cpu(), halt_probs.detach().cpu(), ponder_cost.detach().cpu(), target.detach().cpu()))
+                loss = criterion(output, target) + args.tau * ponder_cost
+            elif args.cfg.name.startswith('sgru'):
+                # pdb.set_trace()
+                output, ponder_cost = output
+                extended_outputs.append((output.detach().cpu(), ponder_cost.detach().cpu(), target.detach().cpu()))
+                loss = criterion(output, target) + args.tau * ponder_cost
+            else:
+                extended_outputs.append((output.detach().cpu(), target.detach().cpu()))
+                loss = criterion(output, target)
 
             # measure accuracy and record loss
             acc1, acc1 = accuracy(output, target, topk=(1, 1))
@@ -512,11 +564,33 @@ def validate(val_loader, model, criterion, optimizer, epoch, args):
 
             if i % args.print_freq == 0:
                 progress.display(i)
-
+                
         print(' * Acc@1 {top1.avg:.3f}'.format(top1=top1))
 
-    return top1.avg, top1.avg
-
+    if args.useACT:
+        if args.returnValidOutput:
+            outputs, full_outputs, all_halt_probs, ponder_costs, targets = zip(*extended_outputs)
+            outputs = torch.cat(outputs, dim=0)
+            full_outputs = torch.cat(full_outputs, dim=1)
+            all_halt_probs = torch.cat(all_halt_probs, dim=0)
+            targets = torch.cat(targets, dim=0)
+            return top1.avg, (outputs, full_outputs, all_halt_probs, ponder_costs, targets)
+        else:
+            outputs, all_halt_probs, ponder_costs, targets = zip(*extended_outputs)
+            outputs = torch.cat(outputs, dim=0)
+            all_halt_probs = torch.cat(all_halt_probs, dim=0)
+            targets = torch.cat(targets, dim=0)
+            return top1.avg, (outputs, all_halt_probs, ponder_costs, targets)
+    elif args.cfg.name.startswith('sgru'):
+        outputs, ponder_costs, targets = zip(*extended_outputs)
+        outputs = torch.cat(outputs, dim=0)
+        targets = torch.cat(targets, dim=0)
+        return top1.avg, (outputs, ponder_costs, targets)
+    else:
+        outputs, targets = zip(*extended_outputs)
+        outputs = torch.cat(outputs, dim=0)
+        targets = torch.cat(targets, dim=0)
+        return top1.avg, (outputs, targets)
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""

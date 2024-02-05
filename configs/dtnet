@@ -1,0 +1,12 @@
+{
+    'backbone':
+        [
+            {
+                'out_channels': 100,
+                'timesteps': 12,
+            },
+        ],
+    'name': 'dtnet',
+    'num_classes': 2,
+    'nlayers': -1,
+}

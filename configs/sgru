@@ -2,16 +2,15 @@
     'backbone':
         [
             {
-                'rnn_layer': 'gru',
+                'rnn_layer': 'sgru',
                 'conv_init': 'gabor',
-                'fsize': 7,
+                'fsize': 9,
                 'stride': 2,
-                'out_channels': 21,
+                'out_channels': 32,
                 'timesteps': 12,
-                'nl': 'relu'
             },
         ],
-    'name': 'gru_relu',
+    'name': 'sgru',
     'num_classes': 2,
     'nlayers': -1,
 }

@@ -85,6 +85,7 @@ class hConvGRUCell(nn.Module):
         self.timesteps = timesteps
         self.batchnorm = batchnorm
         
+        
         self.u1_gate = nn.Conv2d(hidden_size, hidden_size, 1)
         self.u2_gate = nn.Conv2d(hidden_size, hidden_size, 1)
         
@@ -140,7 +141,7 @@ class hConvGRUCell(nn.Module):
             
 
         #import pdb; pdb.set_trace()
-        i = timestep
+        i = min(timestep, self.timesteps-1)
         if self.batchnorm:
             g1_t = torch.sigmoid(self.bn[i*4+0](self.u1_gate(prev_state2)))
             c1_t = self.bn[i*4+1](F.conv2d(prev_state2 * g1_t, self.w_gate_inh, padding=self.padding))
@@ -170,10 +171,13 @@ class hConvGRUCell(nn.Module):
 
 class hConvGRU(nn.Module):
 
-    def __init__(self, timesteps=8, filt_size = 9, hidden_dim=25):
+    def __init__(self, timesteps=8, filt_size = 9, hidden_dim=25, return_all_states=False,
+                stable_halting=True):
         super().__init__()
         self.timesteps = timesteps
-        
+        self.return_all_states = return_all_states
+        self.stable_halting = stable_halting
+
         self.unit1 = hConvGRUCell(hidden_dim, hidden_dim, filt_size, timesteps=timesteps)
         print("Training with filter size:",filt_size,"x",filt_size)
         self.unit1.train()
@@ -181,10 +185,33 @@ class hConvGRU(nn.Module):
         self.bn = nn.BatchNorm2d(hidden_dim, eps=1e-03)
         
     def forward(self, x):
+        all_states = []
         internal_state = None
-        
         for i in range(self.timesteps):
             internal_state  = self.unit1(x, internal_state, timestep=i)
-        output = self.bn(internal_state)
+            all_states.append(internal_state) # THIS IS ONLY IF USING EVERY STATE AS A POSSIBLE OUTPUT
+        if self.return_all_states:
+            output = [self.bn(state) for state in all_states]
+        else:
+            output = self.bn(all_states[-1])
+        if self.stable_halting==True and self.training==False:
+            # Then find the first timesteps where the movement slows to 10% of the initial movement.
+            # _, _, nc, d1, d2 = inter_outputs.shape
+            all_states = torch.stack(all_states)  # timesteps x bs x nc x d1 x d2
+            # y = all_states.transpose(1, 0)
+            y = all_states
+            diffs = (torch.abs(y[1:] - y[:-1])).mean(
+                (2, 3, 4)
+            )  # [n_timesteps x batch_size]
+            thresh = diffs[0, :] * 0.1  # [batch_size]
+            thresh_step = [diffs[:, i] < thresh[i] for i in range(len(thresh))]
+            thresh_step = [
+                step.detach().cpu().numpy().astype(np.int32) for step in thresh_step
+            ]
+            thresh_step = [np.where(step)[0] for step in thresh_step]
+            thresh_step = [step[0] if len(step) > 0 else (self.timesteps-1)
+                for step in thresh_step]
+            halting_states = [all_states[t, x_ind] for x_ind, t in enumerate(thresh_step)]
+            output = self.bn(torch.stack(halting_states))
         
         return output

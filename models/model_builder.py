@@ -4,11 +4,14 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import pdb
 
 from models import resnet as models_resnet
 from models.resnet_pathfinder import *
 from models.dale_rnn import DaleRNNLayer
+from models.dt_net_2d import dt_net_2d
 from models.hgru import hConvGRU
+from models.sgru import hConvSGRU
 from models.convgru import ConvGRU
 from models.ext_rnn import ExtRNNLayer
 from models.convrnn import ConvRNNLayer
@@ -37,7 +40,7 @@ class BaseModel(nn.Module):
                 timesteps=self.timesteps,
                 exc_fsize=self.backbone['fsize'],
                 init_=self.backbone['init_'],
-                return_all_states=False,
+                return_all_states=True,
                 use_ln=self.backbone['use_ln']=='True',
                 use_gates=self.backbone['use_gates']=='True',
                 nl=self.backbone['nl'],
@@ -48,8 +51,19 @@ class BaseModel(nn.Module):
             # else:
             self.num_units = self.backbone['out_channels']
 
+        elif self.name.startswith('dtnet'):
+            self.rnn = dt_net_2d(width=self.backbone['out_channels'], in_channels=32)
+            self.num_units = self.backbone['out_channels']
+
         elif self.name.startswith("hgru"):
             self.rnn = hConvGRU(
+                filt_size=self.backbone['fsize'],
+                hidden_dim=self.backbone['out_channels'],
+                timesteps=self.backbone['timesteps'])
+            self.num_units = self.backbone['out_channels']
+
+        elif self.name.startswith("sgru"):
+            self.rnn = hConvSGRU(
                 filt_size=self.backbone['fsize'],
                 hidden_dim=self.backbone['out_channels'],
                 timesteps=self.backbone['timesteps'])
@@ -177,24 +191,68 @@ class BaseModel(nn.Module):
         self.final_pool = nn.AdaptiveMaxPool2d((1, 1))
         self.readout = nn.Linear(2, self.num_classes)
 
-    def forward(self, x):
+    def forward(self, x, doEntropyThresholding=False, returnOutput=False):
         if self.name.startswith('resnet'):
             x = self.backbone.get_intermediate_layers(
                 x, n=1)  # retrieve post-avg-pool output
         # elif self.name.startswith('dalernn'):
         #     # all_outputs = self.backbone(x)
         #     # x = all_outputs[-1]
-        else:
-            all_outputs = None
+        elif self.name.startswith('hgru'):
             x = self.backbone(x)
-        self.rnn_out = x
+            bs, nc, d1, d2 = x.shape
+        elif self.name.startswith('sgru'):
+            x, ponder_cost = self.backbone(x)
+            x = x[-1]
+            bs, nc, d1, d2 = x.shape
+        else:
+            x, halt_probs, ponder_cost = self.backbone(x)
+            if self.name.startswith("dalernn"):
+                x = x[0]       # Taking only the outputs_e population, not outputs_i
+            x = torch.stack(x)   # x is num_timesteps x bs x hidden_dim
+        
+            # First option, we calc output for each timestep, then compute weighted sum
+            # Second option, we calc weighted sum of states, then compute output - problem here is that states are 2D
+        
+            num_timesteps, bs, nc, d1, d2 = x.shape
+            # x = x.reshape(num_timesteps * bs, nc, d1, d2)
+            
+            # Broadcast halt_prob to hidden dim; bs x num_timesteps x nc x d1 x d2 
+            halt_probs = torch.tile(halt_probs.unsqueeze(2).unsqueeze(3).unsqueeze(4), dims=(1, 1, nc, d1, d2))
+            # Multiply states with halt_prob
+            x = x.transpose(0, 1) * halt_probs
+            # Sum over timesteps, shape will be bs x 2
+            x = torch.sum(x, dim=1)
+        
         x = self.final_conv(x)
         x = self.final_pool(x)
         x = torch.flatten(x, 1)
         x = self.readout(x)
-        if all_outputs:
-            return x, all_outputs
-        return x
+        x = x.reshape(bs, -1)
+        
+        # SRINI: we have logits for all timesteps. If not doEntropyTresholding, pick the last one. 
+        # Otherwise, pick the one with min entropy.
+        # if not doEntropyThresholding:
+        #     x_reduced = x[-1]
+        # else:
+        #     probs = F.softmax(x, dim=-1)
+        #     shannon_entropies = (-probs * torch.log2(probs)).sum(axis=-1)
+        #     timesteps_with_min_entropy = shannon_entropies.argmin(axis=0) # vector of positions, for each item in minibatch
+        #     gather_idxs = timesteps_with_min_entropy.repeat((2,1)).T.unsqueeze(0)
+        #     x_reduced = torch.gather(x, 0, gather_idxs).squeeze()
+        
+        # if all_outputs:
+        #     return x, all_outputs
+
+        if self.name.startswith('hgru'):
+            return x
+        elif self.name.startswith('sgru'):
+            return x, ponder_cost
+        elif self.name.startswith('dalernn') or self.name.startswith('gru'):
+            return x, ponder_cost, halt_probs[:, :, 0, 0, 0]
+        else:
+            return x
+        # return x_reduced, ponder_cost
 
     def get_intermediate_layers(self, x, n):
         """Get the n'th layer"""
