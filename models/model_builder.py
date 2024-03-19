@@ -191,7 +191,7 @@ class BaseModel(nn.Module):
         self.final_pool = nn.AdaptiveMaxPool2d((1, 1))
         self.readout = nn.Linear(2, self.num_classes)
 
-    def forward(self, x, doEntropyThresholding=False, returnOutput=False):
+    def forward(self, x):
         if self.name.startswith('resnet'):
             x = self.backbone.get_intermediate_layers(
                 x, n=1)  # retrieve post-avg-pool output
@@ -206,7 +206,7 @@ class BaseModel(nn.Module):
             x = x[-1]
             bs, nc, d1, d2 = x.shape
         else:
-            x, halt_probs, ponder_cost = self.backbone(x)
+            x, gates, halt_probs, ponder_cost = self.backbone(x)
             if self.name.startswith("dalernn"):
                 x = x[0]       # Taking only the outputs_e population, not outputs_i
             x = torch.stack(x)   # x is num_timesteps x bs x hidden_dim
@@ -229,17 +229,6 @@ class BaseModel(nn.Module):
         x = torch.flatten(x, 1)
         x = self.readout(x)
         x = x.reshape(bs, -1)
-        
-        # SRINI: we have logits for all timesteps. If not doEntropyTresholding, pick the last one. 
-        # Otherwise, pick the one with min entropy.
-        # if not doEntropyThresholding:
-        #     x_reduced = x[-1]
-        # else:
-        #     probs = F.softmax(x, dim=-1)
-        #     shannon_entropies = (-probs * torch.log2(probs)).sum(axis=-1)
-        #     timesteps_with_min_entropy = shannon_entropies.argmin(axis=0) # vector of positions, for each item in minibatch
-        #     gather_idxs = timesteps_with_min_entropy.repeat((2,1)).T.unsqueeze(0)
-        #     x_reduced = torch.gather(x, 0, gather_idxs).squeeze()
         
         # if all_outputs:
         #     return x, all_outputs

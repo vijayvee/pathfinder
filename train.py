@@ -441,12 +441,9 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         # Casts operations to mixed precision
         optimizer.zero_grad()
         with torch.cuda.amp.autocast():
-            output = model(images, returnOutput=args.returnValidOutput)
+            output = model(images)
             if args.useACT:
-                if args.returnValidOutput:
-                    output, full_output, halt_probs, ponder_cost = output
-                else:
-                    output, ponder_cost, halt_probs = output
+                output, ponder_cost, halt_probs = output
                 loss = criterion(output, target) + args.tau * ponder_cost
             elif args.cfg.name.startswith('sgru'):
                 output, ponder_cost = output
@@ -533,16 +530,10 @@ def validate(val_loader, model, criterion, optimizer, epoch, args):
             if torch.cuda.is_available():
                 target = target.cuda(args.gpu, non_blocking=True)
 
-            output = model(images, 
-                            doEntropyThresholding=args.doEntropyThresholding, 
-                            returnOutput=args.returnValidOutput)
+            output = model(images)
             if args.useACT:
-                if args.returnValidOutput:
-                    output, full_output, halt_probs, ponder_cost = output
-                    extended_outputs.append((output.detach().cpu(), full_output.detach().cpu(), halt_probs.detach().cpu(), ponder_cost.detach().cpu(), target.detach().cpu()))
-                else:
-                    output, ponder_cost, halt_probs = output
-                    extended_outputs.append((output.detach().cpu(), halt_probs.detach().cpu(), ponder_cost.detach().cpu(), target.detach().cpu()))
+                output, ponder_cost, halt_probs = output
+                extended_outputs.append((output.detach().cpu(), halt_probs.detach().cpu(), ponder_cost.detach().cpu(), target.detach().cpu()))
                 loss = criterion(output, target) + args.tau * ponder_cost
             elif args.cfg.name.startswith('sgru'):
                 # pdb.set_trace()
@@ -568,19 +559,11 @@ def validate(val_loader, model, criterion, optimizer, epoch, args):
         print(' * Acc@1 {top1.avg:.3f}'.format(top1=top1))
 
     if args.useACT:
-        if args.returnValidOutput:
-            outputs, full_outputs, all_halt_probs, ponder_costs, targets = zip(*extended_outputs)
-            outputs = torch.cat(outputs, dim=0)
-            full_outputs = torch.cat(full_outputs, dim=1)
-            all_halt_probs = torch.cat(all_halt_probs, dim=0)
-            targets = torch.cat(targets, dim=0)
-            return top1.avg, (outputs, full_outputs, all_halt_probs, ponder_costs, targets)
-        else:
-            outputs, all_halt_probs, ponder_costs, targets = zip(*extended_outputs)
-            outputs = torch.cat(outputs, dim=0)
-            all_halt_probs = torch.cat(all_halt_probs, dim=0)
-            targets = torch.cat(targets, dim=0)
-            return top1.avg, (outputs, all_halt_probs, ponder_costs, targets)
+        outputs, all_halt_probs, ponder_costs, targets = zip(*extended_outputs)
+        outputs = torch.cat(outputs, dim=0)
+        all_halt_probs = torch.cat(all_halt_probs, dim=0)
+        targets = torch.cat(targets, dim=0)
+        return top1.avg, (outputs, all_halt_probs, ponder_costs, targets)
     elif args.cfg.name.startswith('sgru'):
         outputs, ponder_costs, targets = zip(*extended_outputs)
         outputs = torch.cat(outputs, dim=0)

@@ -10,3 +10,7 @@ models/__pycache__/*pyc
 unused/
 ckpt_iclr/
 ablation_iclr/
+*npy
+data/
+wandb/
+gilbert_contours/
